@@ -1,0 +1,8 @@
+-- ʕ •ᴥ•ʔ✿ Paste at end of cDF MainMenuBarMixin:statusbar_setup() before its final end ✿ ʕ •ᴥ•ʔ
+
+local q = _G.qtBar
+if q then
+	if q.BumpAttuneRefresh then
+		q.BumpAttuneRefresh()
+	end
+end

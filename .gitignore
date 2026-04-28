@@ -1,0 +1,13 @@
+# IDE / agent
+.cursor/
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor
+*.bak
+*~
+*.swp
+*.swo

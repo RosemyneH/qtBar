@@ -1,0 +1,8 @@
+## Interface: 33300
+## Title: qtBar |cff00ccffcDF|r
+## Notes: Anchors qtBar overlay when using cDF (Chromie Dragonflight UI)
+## Version: v1
+## Dependencies: qtBar, cDF
+## OptionalDeps: cDF
+
+plugin.lua

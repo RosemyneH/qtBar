@@ -1,0 +1,13 @@
+## Interface: 33300
+## Title: qtBar
+## Notes: Tracks equipped attuned gear with a standalone lightweight bar
+## Version: v1
+## SavedVariables: qtBarDB
+
+# Load Order
+
+data.lua
+config.lua
+bar.lua
+events.lua
+main.lua
