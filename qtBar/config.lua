@@ -14,8 +14,9 @@ local tinsert = table.insert
 qtBar.DEFAULTS = {
 	hideWhileLeveling = false,
 	maxLevel = 80,
-	fillColor = { r = 0.25, g = 0.55, b = 0.95, a = 1 },
+	fillColor = { r = 1, g = 0, b = 0, a = 1 },
 	showAttuneSlotCount = true,
+	showLabelOnHover = false,
 	point = "BOTTOM",
 	relativePoint = "BOTTOM",
 	x = 0,
@@ -27,6 +28,8 @@ qtBar.DEFAULTS = {
 	sizeMinH = 4,
 	sizeMaxH = 100,
 	bubbleScale = 1,
+	bubbleStretchX = 1,
+	lerpSpeed = 1.3,
 	colorCycleSpeed = 0,
 	theme = "dark"
 }
@@ -102,8 +105,14 @@ function qtBar.ConfigMerge()
 	if db.bubbleScale == nil then
 		db.bubbleScale = d.bubbleScale
 	end
+	if db.bubbleStretchX == nil then
+		db.bubbleStretchX = d.bubbleStretchX
+	end
 	if db.colorCycleSpeed == nil then
 		db.colorCycleSpeed = d.colorCycleSpeed
+	end
+	if db.lerpSpeed == nil then
+		db.lerpSpeed = d.lerpSpeed
 	end
 	if db.theme == nil then
 		db.theme = d.theme
@@ -133,7 +142,15 @@ function qtBar.ConfigMerge()
 	db.sizeMaxW = tonumber(db.sizeMaxW) or d.sizeMaxW
 	db.sizeMinH = tonumber(db.sizeMinH) or d.sizeMinH
 	db.sizeMaxH = tonumber(db.sizeMaxH) or d.sizeMaxH
-	db.bubbleScale = tonumber(db.bubbleScale) or d.bubbleScale
+	db.bubbleScale = d.bubbleScale
+	db.bubbleStretchX = d.bubbleStretchX
+	db.lerpSpeed = tonumber(db.lerpSpeed) or d.lerpSpeed
+	if db.lerpSpeed < 0.1 then
+		db.lerpSpeed = 0.1
+	end
+	if db.lerpSpeed > 20 then
+		db.lerpSpeed = 20
+	end
 	db.colorCycleSpeed = tonumber(db.colorCycleSpeed) or 0
 	qtBar.db = db
 end
@@ -171,11 +188,14 @@ function qtBar.ConfigCreatePanel()
 	if f.SetFrameLevel then
 		f:SetFrameLevel(200)
 	end
+	if f.SetToplevel then
+		f:SetToplevel(true)
+	end
 	f:SetMovable(true)
 	f:EnableMouse(true)
-	f:RegisterForDrag("LeftButton")
-	f:SetScript("OnDragStart", f.StartMoving)
-	f:SetScript("OnDragStop", f.StopMovingOrSizing)
+	if f.SetClampedToScreen then
+		f:SetClampedToScreen(true)
+	end
 	f:SetBackdrop({
 		bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
 		edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
@@ -188,11 +208,36 @@ function qtBar.ConfigCreatePanel()
 	f._themeTexts = {}
 	f._editRefs = {}
 	f:Hide()
+	if _G.UISpecialFrames then
+		local found = false
+		for _, n in ipairs(_G.UISpecialFrames) do
+			if n == "qtBarConfigFrame" then
+				found = true
+				break
+			end
+		end
+		if not found then
+			tinsert(_G.UISpecialFrames, "qtBarConfigFrame")
+		end
+	end
 
 	local close = _G.CreateFrame("Button", nil, f, "UIPanelCloseButton")
 	close:SetPoint("TOPRIGHT", -6, -6)
 	close:SetScript("OnClick", function()
 		f:Hide()
+	end)
+
+	local dragHandle = _G.CreateFrame("Frame", nil, f)
+	dragHandle:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -8)
+	dragHandle:SetPoint("TOPRIGHT", f, "TOPRIGHT", -32, -8)
+	dragHandle:SetHeight(24)
+	dragHandle:EnableMouse(true)
+	dragHandle:RegisterForDrag("LeftButton")
+	dragHandle:SetScript("OnDragStart", function()
+		f:StartMoving()
+	end)
+	dragHandle:SetScript("OnDragStop", function()
+		f:StopMovingOrSizing()
 	end)
 
 	f.title = f:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
@@ -229,8 +274,11 @@ function qtBar.ConfigCreatePanel()
 	qtBar:RegisterThemeDropdown(themeDrop)
 
 	local inset = _G.CreateFrame("Frame", nil, f, CONFIG_FRAME_TEMPLATE)
+	if inset.SetFrameStrata then
+		inset:SetFrameStrata("DIALOG")
+	end
 	if inset.SetFrameLevel then
-		inset:SetFrameLevel(1)
+		inset:SetFrameLevel(f:GetFrameLevel() + 5)
 	end
 	inset:SetBackdrop({
 		bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
@@ -259,6 +307,15 @@ function qtBar.ConfigCreatePanel()
 		qtBar._dirty = true
 	end)
 	y = y - rowPad
+	f.checkLabelHover = makeCheck(inset, f, "qtBarCfg_LabelHover", y, "Show label only on hover", function()
+		return qtBar.db.showLabelOnHover
+	end, function(v)
+		qtBar.db.showLabelOnHover = v
+		if qtBar.UpdateLabelVisibility then
+			qtBar.UpdateLabelVisibility(false)
+		end
+	end)
+	y = y - rowPad
 	local labelW = 340
 	local editX = 16 + labelW + 24
 	local y2 = y
@@ -275,12 +332,30 @@ function qtBar.ConfigCreatePanel()
 			end
 			return n
 		end
+		if dbk == "lerpSpeed" then
+			if n < 0.1 then
+				n = 0.1
+			end
+			if n > 20 then
+				n = 20
+			end
+			return n
+		end
 		if dbk == "bubbleScale" then
 			if n < 0.1 then
 				n = 0.1
 			end
 			if n > 3 then
 				n = 3
+			end
+			return n
+		end
+		if dbk == "bubbleStretchX" then
+			if n < 0.2 then
+				n = 0.2
+			end
+			if n > 4 then
+				n = 4
 			end
 			return n
 		end
@@ -297,13 +372,7 @@ function qtBar.ConfigCreatePanel()
 	end
 	f.syncSizeFields = function()
 		for _, k in ipairs({
-			"barW",
-			"barH",
-			"minW",
-			"maxW",
-			"minH",
-			"maxH",
-			"bubble",
+			"lerp",
 			"ccycle"
 		}) do
 			local edit = f["edit_" .. k]
@@ -311,8 +380,14 @@ function qtBar.ConfigCreatePanel()
 				edit.setFromDb()
 			end
 		end
+		if f.updateColorPreview then
+			f.updateColorPreview()
+		end
 	end
 	f:HookScript("OnShow", function()
+		if f.Raise then
+			f:Raise()
+		end
 		if qtBar.BumpAttuneRefresh then
 			qtBar.BumpAttuneRefresh()
 		end
@@ -324,14 +399,8 @@ function qtBar.ConfigCreatePanel()
 		qtBar:ApplyConfigTheme()
 	end)
 	for _, p in ipairs({
-		{ "barW", "Bar width (px)", "width", "int" },
-		{ "barH", "Bar height (px)", "height", "int" },
-		{ "minW", "Min width (shift-right-drag)", "sizeMinW", "int" },
-		{ "maxW", "Max width (resize cap)", "sizeMaxW", "int" },
-		{ "minH", "Min height", "sizeMinH", "int" },
-		{ "maxH", "Max height", "sizeMaxH", "int" },
-		{ "bubble", "Bubble / art scale (0.1-3)", "bubbleScale", "float" },
-		{ "ccycle", "Color cycle speed (0 = solid; try 0.2-0.8)", "colorCycleSpeed", "float" }
+		{ "lerp", "Animation speed (lerp, default 1.3)", "lerpSpeed", "float" },
+		{ "ccycle", "Rainbow cycle speed (0 = off; try 0.2-0.8)", "colorCycleSpeed", "float" }
 	}) do
 		local pkey, lbl, dbk, numKind = p[1], p[2], p[3], p[4]
 		local lab = inset:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
@@ -342,10 +411,22 @@ function qtBar.ConfigCreatePanel()
 		lab:SetText(lbl)
 		tinsert(f._themeTexts, lab)
 		local edit = _G.CreateFrame("EditBox", "qtBarCfg_" .. pkey, inset, "InputBoxTemplate")
+		if edit.SetFrameStrata then
+			edit:SetFrameStrata("DIALOG")
+		end
 		edit:SetWidth(112)
+		edit:SetHeight(20)
 		edit:ClearAllPoints()
 		edit:SetPoint("TOPLEFT", inset, "TOPLEFT", editX, y2 - 2)
 		edit:SetMaxLetters(12)
+		edit:SetAutoFocus(false)
+		edit:EnableMouse(true)
+		if edit.EnableKeyboard then
+			edit:EnableKeyboard(true)
+		end
+		if edit.SetFrameLevel and inset.GetFrameLevel then
+			edit:SetFrameLevel(inset:GetFrameLevel() + 30)
+		end
 		tinsert(f._editRefs, edit)
 		f["edit_" .. pkey] = edit
 		function edit.setFromDb()
@@ -391,6 +472,23 @@ function qtBar.ConfigCreatePanel()
 		edit:SetScript("OnEnterPressed", function(s)
 			s:ClearFocus()
 		end)
+		edit:SetScript("OnEscapePressed", function(s)
+			s:ClearFocus()
+			s.setFromDb()
+		end)
+		edit:SetScript("OnMouseDown", function(s)
+			if s.Raise then
+				s:Raise()
+			end
+			s:SetFocus()
+			s:HighlightText()
+		end)
+		edit:SetScript("OnMouseUp", function(s)
+			if s.Raise then
+				s:Raise()
+			end
+			s:SetFocus()
+		end)
 		edit:SetScript("OnEditFocusLost", edit.onApply)
 		edit.setFromDb()
 		local labH = (lab.GetStringHeight and lab:GetStringHeight()) or 16
@@ -399,6 +497,76 @@ function qtBar.ConfigCreatePanel()
 		end
 		y2 = y2 - max(labH + 18, rowPad + 4)
 	end
+
+	local colorLabel = inset:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+	colorLabel:SetPoint("TOPLEFT", 16, y2)
+	colorLabel:SetWidth(labelW)
+	colorLabel:SetJustifyH("LEFT")
+	colorLabel:SetText("Fill color")
+	tinsert(f._themeTexts, colorLabel)
+
+	local colorBtn = _G.CreateFrame("Button", "qtBarCfg_FillColorBtn", inset)
+	if colorBtn.SetFrameStrata then
+		colorBtn:SetFrameStrata("DIALOG")
+	end
+	colorBtn:SetWidth(112)
+	colorBtn:SetHeight(20)
+	colorBtn:SetPoint("TOPLEFT", inset, "TOPLEFT", editX, y2 - 2)
+	colorBtn:SetNormalFontObject("GameFontHighlightSmall")
+	colorBtn:SetText("Pick...")
+	local sw = colorBtn:CreateTexture(nil, "ARTWORK")
+	sw:SetPoint("TOPLEFT", colorBtn, "TOPLEFT", 4, -4)
+	sw:SetPoint("BOTTOMRIGHT", colorBtn, "BOTTOMRIGHT", -4, 4)
+	sw:SetTexture("Interface\\Buttons\\WHITE8X8")
+	colorBtn.swatch = sw
+
+	f.updateColorPreview = function()
+		qtBar.ConfigMerge()
+		local c = qtBar.db.fillColor or qtBar.DEFAULTS.fillColor
+		sw:SetVertexColor(c.r or 1, c.g or 1, c.b or 1, c.a or 1)
+	end
+	f.updateColorPreview()
+
+	local function applyPickedColor(r, g, b, a)
+		qtBar.ConfigMerge()
+		qtBar.db.fillColor = {
+			r = r or 1,
+			g = g or 1,
+			b = b or 1,
+			a = a or 1
+		}
+		qtBar.db.colorCycleSpeed = 0
+		qtBar.Refresh()
+		f.updateColorPreview()
+	end
+
+	colorBtn:SetScript("OnClick", function()
+		qtBar.ConfigMerge()
+		local c = qtBar.db.fillColor or qtBar.DEFAULTS.fillColor
+		if not _G.ColorPickerFrame then
+			return
+		end
+		local picker = _G.ColorPickerFrame
+		local r0, g0, b0, a0 = c.r or 1, c.g or 1, c.b or 1, c.a or 1
+		picker.hasOpacity = true
+		picker.opacity = 1 - a0
+		picker.previousValues = { r0, g0, b0, a0 }
+		picker.func = function()
+			local r, g, b = picker:GetColorRGB()
+			local a = 1 - (_G.OpacitySliderFrame and _G.OpacitySliderFrame:GetValue() or picker.opacity or 0)
+			applyPickedColor(r, g, b, a)
+		end
+		picker.opacityFunc = picker.func
+		picker.cancelFunc = function(prev)
+			if type(prev) == "table" then
+				applyPickedColor(prev[1], prev[2], prev[3], prev[4] or 1)
+			end
+		end
+		picker:SetColorRGB(r0, g0, b0)
+		picker:Hide()
+		picker:Show()
+	end)
+	y2 = y2 - rowPad
 	qtBar.configFrame = f
 	qtBar:ApplyConfigTheme()
 	f:Hide()

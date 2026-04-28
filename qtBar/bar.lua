@@ -59,6 +59,10 @@ local function round(v)
 	return floor(v + 0.5)
 end
 
+local function pixelSnap(v)
+	return floor((v or 0) + 0.5)
+end
+
 local function cursorPos()
 	local scale = UIParent:GetEffectiveScale()
 	local x, y = GetCursorPosition()
@@ -116,35 +120,17 @@ local function showTooltip(frame)
 	end
 	GameTooltip:AddLine("Shift + Left-Drag: move", 0.6, 0.8, 1)
 	GameTooltip:AddLine("Shift + Right-Drag: resize", 0.6, 0.8, 1)
+	GameTooltip:AddLine("Shift + Middle-Click: open config", 0.6, 0.8, 1)
 	GameTooltip:Show()
 end
 
-local function hsvToRgb(h, s, v)
-	h = h % 1
-	if h < 0 then
-		h = h + 1
-	end
-	h = h * 6
-	local i = floor(h)
-	local f = h - i
-	local p, q, t = v * (1 - s), v * (1 - s * f), v * (1 - s * (1 - f))
-	i = i % 6
-	if i == 0 then
-		return v, t, p
-	end
-	if i == 1 then
-		return q, v, p
-	end
-	if i == 2 then
-		return p, v, t
-	end
-	if i == 3 then
-		return p, q, v
-	end
-	if i == 4 then
-		return t, p, v
-	end
-	return v, t, p
+local function rainbowRgb(t)
+	local tau = 6.28318530718
+	local phase = (t % 1) * tau
+	local r = 0.5 + 0.5 * math.sin(phase)
+	local g = 0.5 + 0.5 * math.sin(phase + 2.09439510239)
+	local b = 0.5 + 0.5 * math.sin(phase + 4.18879020479)
+	return r, g, b
 end
 
 function qtBar.ApplyBarLayout()
@@ -171,22 +157,77 @@ function qtBar.LayoutBarArt()
 	end
 	local db = qtBar.db
 	local scale = (db and tonumber(db.bubbleScale)) or 1
+	local stretchX = (db and tonumber(db.bubbleStretchX)) or 1
 	if scale < 0.1 then
 		scale = 0.1
 	end
 	if scale > 3 then
 		scale = 3
 	end
+	if stretchX < 0.2 then
+		stretchX = 0.2
+	end
+	if stretchX > 4 then
+		stretchX = 4
+	end
 	local w = b.overlay:GetWidth()
 	local h = b.overlay:GetHeight()
-	local pieceW = w * 0.25
-	local artH = min(10 * scale, h * 0.9)
-	local y = max(0, h - artH)
+	local baseW = pixelSnap(w * 0.25)
+	if baseW < 1 then
+		baseW = 1
+	end
+	local pieceW = baseW
+	local baseArtH = max(10, h)
+	local artH = pixelSnap(min(baseArtH * scale, h * 3))
+	if artH < 1 then
+		artH = 1
+	end
+	local y = pixelSnap((h * 0.5) - (artH * 0.5))
+	local xZoom = max(0.2, min(4, stretchX))
+	local uSpan = 0.5 / xZoom
+	if uSpan > 0.5 then
+		uSpan = 0.5
+	end
+	local inset = 0.0015
+	local u1 = (0.5 - uSpan) + inset
+	local u2 = (0.5 + uSpan) - inset
+	if u2 <= u1 then
+		u1 = 0.25
+		u2 = 0.75
+	end
 	for i = 1, 4 do
 		local t = b.art[i]
 		t:ClearAllPoints()
 		t:SetSize(pieceW, artH)
-		t:SetPoint("BOTTOM", b.overlay, "BOTTOM", (i - 2.5) * pieceW, y)
+		local top = ART_COORDS[i].top + inset
+		local bottom = ART_COORDS[i].bottom - inset
+		if bottom <= top then
+			top = ART_COORDS[i].top
+			bottom = ART_COORDS[i].bottom
+		end
+		t:SetTexCoord(u1, u2, top, bottom)
+		local xOfs = pixelSnap((i - 2.5) * baseW)
+		t:SetPoint("BOTTOM", b.overlay, "BOTTOM", xOfs, y)
+	end
+end
+
+function qtBar.UpdateLabelVisibility(isHovering)
+	local b = qtBar.bar
+	local db = qtBar.db
+	if not b or not b.label then
+		return
+	end
+	local hoverOnly = db and db.showLabelOnHover
+	local show = not hoverOnly
+	if hoverOnly then
+		show = isHovering and true or false
+	end
+	if b.label.SetShown then
+		b.label:SetShown(show)
+	elseif show then
+		b.label:Show()
+	else
+		b.label:Hide()
 	end
 end
 
@@ -203,6 +244,9 @@ function qtBar.BarCreate()
 	b.overlay:SetFrameLevel(25)
 	b.overlay:SetMovable(true)
 	b.overlay:EnableMouse(true)
+	if b.overlay.SetClipsChildren then
+		b.overlay:SetClipsChildren(true)
+	end
 	if b.overlay.SetClampedToScreen then
 		b.overlay:SetClampedToScreen(true)
 	end
@@ -215,11 +259,23 @@ function qtBar.BarCreate()
 	b.fill:SetAllPoints(b.overlay)
 	b.fill:SetMinMaxValues(0, 100)
 	b.fill:SetValue(0)
-	b.fill:SetFrameLevel(5)
+	b.fill:SetFrameLevel(6)
 	b.fill:SetStatusBarTexture(BARS_PATH)
 	local tx = b.fill:GetStatusBarTexture()
 	if tx then
 		tx:SetDrawLayer("BORDER", 0)
+	end
+
+	b.fillGhost = CreateFrame("StatusBar", "qtBarFillGhost", b.overlay)
+	b.fillGhost:SetAllPoints(b.overlay)
+	b.fillGhost:SetMinMaxValues(0, 100)
+	b.fillGhost:SetValue(0)
+	b.fillGhost:SetFrameLevel(5)
+	b.fillGhost:SetStatusBarTexture(BARS_PATH)
+	b.fillGhost:SetStatusBarColor(1, 1, 1, 1)
+	local gtx = b.fillGhost:GetStatusBarTexture()
+	if gtx then
+		gtx:SetDrawLayer("ARTWORK", 0)
 	end
 
 	b.art = {}
@@ -237,12 +293,22 @@ function qtBar.BarCreate()
 	b.overlay:SetScript("OnSizeChanged", function()
 		qtBar.LayoutBarArt()
 	end)
-	b.overlay:SetScript("OnEnter", showTooltip)
+	b.overlay:SetScript("OnEnter", function(self)
+		showTooltip(self)
+		qtBar.UpdateLabelVisibility(true)
+	end)
 	b.overlay:SetScript("OnLeave", function()
 		GameTooltip:Hide()
+		qtBar.UpdateLabelVisibility(false)
 	end)
 	b.overlay:SetScript("OnMouseDown", function(self, button)
 		if not IsShiftKeyDown() then
+			return
+		end
+		if button == "MiddleButton" then
+			if qtBar.ConfigToggle then
+				qtBar.ConfigToggle()
+			end
 			return
 		end
 		if button == "LeftButton" then
@@ -321,12 +387,21 @@ function qtBar.BarSyncFromData()
 	end
 
 	b.overlay:Show()
-	b.fill:SetValue(snap.average or 0)
+	local target = snap.average or 0
+	if type(b._displayAverage) ~= "number" then
+		b._displayAverage = target
+	end
+	b._targetAverage = target
+	if b.fillGhost then
+		b.fillGhost:SetValue(target)
+	end
+	b.fill:SetValue(b._displayAverage)
 	if not (tonumber(db.colorCycleSpeed) and tonumber(db.colorCycleSpeed) > 0) then
 		local c = db.fillColor
 		b.fill:SetStatusBarColor(c.r, c.g, c.b, c.a or 1)
 	end
 	b.label:SetText(qtBar.FormatAttuneLabel and qtBar.FormatAttuneLabel(snap) or format("Attune: %d%%", floor((snap.average or 0) + 0.5)))
+	qtBar.UpdateLabelVisibility(false)
 	b._lastAverage = snap.average
 end
 
@@ -357,11 +432,27 @@ function qtBar.BarOnUpdate(_, elapsed)
 		qtBar.BarSyncFromData()
 	end
 	if b.fill and b.overlay:IsShown() then
+		local target = b._targetAverage
+		local display = b._displayAverage
+		if type(target) == "number" and type(display) == "number" then
+			local db = qtBar.db
+			local lerpPerSec = (db and tonumber(db.lerpSpeed)) or 1.3
+			if lerpPerSec < 0.1 then
+				lerpPerSec = 0.1
+			end
+			local t = min(1, (elapsed or 0) * lerpPerSec)
+			local nextV = display + (target - display) * t
+			if math.abs(target - nextV) < 0.02 then
+				nextV = target
+			end
+			b._displayAverage = nextV
+			b.fill:SetValue(nextV)
+		end
 		local db = qtBar.db
 		local sp = (db and tonumber(db.colorCycleSpeed)) or 0
 		if sp > 0 then
 			local t = (GetTime() * sp) % 1
-			local cr, cg, cb = hsvToRgb(t, 0.7, 0.95)
+			local cr, cg, cb = rainbowRgb(t)
 			local a = 1
 			if db and db.fillColor and type(db.fillColor) == "table" then
 				a = db.fillColor.a or 1
