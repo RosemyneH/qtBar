@@ -1,7 +1,0 @@
-## Interface: 33300
-## Title: qtBar |cff1784d4ElvUI|r
-## Notes: Parents qtBar to ElvUI experience / data bar when available
-## Version: v1
-## Dependencies: qtBar, ElvUI
-
-plugin.lua
