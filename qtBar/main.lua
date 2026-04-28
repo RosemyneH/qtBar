@@ -1,22 +1,20 @@
 -- ʕ •ᴥ•ʔ✿ qtBar: core, host, init ✿ʕ •ᴥ•ʔ
-local _G = _G
-
-if not _G.qtBar then
-	_G.qtBar = {}
+if not qtBar then
+	qtBar = {}
 end
 
-local qtBar = _G.qtBar
+local qtBar = qtBar
 local unpack = unpack or table.unpack
 
 qtBar.queuedUpdate = false
 qtBar.old_cu_uib = nil
 qtBar.pendingCustomUIBRefresh = false
 
-local CreateFrame = _G.CreateFrame
+local CreateFrame = CreateFrame
 
 local function _delayRun(seconds, fn)
-	if type(_G.Wait) == "function" then
-		_G.Wait(seconds, fn)
+	if type(Wait) == "function" then
+		Wait(seconds, fn)
 		return
 	end
 	local acc = 0
@@ -33,6 +31,9 @@ end
 function qtBar.BumpAttuneRefresh()
 	qtBar._dirty = true
 	qtBar.queuedUpdate = true
+	if qtBar.SetTickerActive then
+		qtBar.SetTickerActive(true)
+	end
 end
 
 qtBar.RequestAttuneRefresh = qtBar.BumpAttuneRefresh
@@ -44,18 +45,18 @@ function qtBar.ScheduleCustomUIBRefresh()
 	qtBar.pendingCustomUIBRefresh = true
 	_delayRun(0.1, function()
 		qtBar.pendingCustomUIBRefresh = false
-		if _G.RequestUpdateList then
-			local updateMask = _G.UPDATE_MASK or {
+		if RequestUpdateList then
+			local updateMask = UPDATE_MASK or {
 				FULL_LIST = 1,
 				OBTAINED = 2,
 				ATTUNED_PERCENT = 4
 			}
 			local o, a = updateMask.OBTAINED, updateMask.ATTUNED_PERCENT
-			local bitlib = _G.bit or bit
+			local bitlib = bit
 			if bitlib and bitlib.bor then
-				_G.RequestUpdateList(bitlib.bor(o, a))
+				RequestUpdateList(bitlib.bor(o, a))
 			else
-				_G.RequestUpdateList(o + a)
+				RequestUpdateList(o + a)
 			end
 		end
 		qtBar.BumpAttuneRefresh()
@@ -66,16 +67,15 @@ function qtBar.HookCustomItemUpdateButton()
 	if qtBar.hookedCustomItemUpdateButton then
 		return
 	end
-	if type(_G._cu_uib) ~= "function" then
+	if type(_cu_uib) ~= "function" then
 		return
 	end
 	qtBar.hookedCustomItemUpdateButton = true
 	qtBar._uibHooked = true
-	qtBar.old_cu_uib = _G._cu_uib
-	_G._cu_uib = function(...)
-		local results = { qtBar.old_cu_uib(...) }
+	qtBar.old_cu_uib = _cu_uib
+	_cu_uib = function(...)
 		qtBar.ScheduleCustomUIBRefresh()
-		return unpack(results)
+		return qtBar.old_cu_uib(...)
 	end
 end
 
@@ -119,8 +119,8 @@ function qtBarInit()
 	qtBar.InitCore()
 end
 
-if type(_G.SynastriaSafeInvoke) == "function" then
-	_G.SynastriaSafeInvoke(qtBarInit)
+if type(SynastriaSafeInvoke) == "function" then
+	SynastriaSafeInvoke(qtBarInit)
 else
 	qtBarInit()
 end

@@ -1,12 +1,11 @@
 -- ʕ •ᴥ•ʔ✿ slim events → refresh (no CLEU) ✿ʕ •ᴥ•ʔ
-local _G = _G
-local qtBar = _G.qtBar
+local qtBar = qtBar
 if not qtBar then
 	return
 end
 
-local GetTime = _G.GetTime
-local CreateFrame = _G.CreateFrame
+local GetTime = GetTime
+local CreateFrame = CreateFrame
 
 local THROTTLE_REGEN_OFF = 0.45
 local lastAt = {}
@@ -61,11 +60,12 @@ function qtBar.RegisterEvents()
 	if qtBar._evFrame then
 		return
 	end
-	local f = _G.CreateFrame("Frame")
+	local f = CreateFrame("Frame")
 	qtBar._evFrame = f
 
 	local eventList = {
 		"UNIT_INVENTORY_CHANGED",
+		"BAG_UPDATE_DELAYED",
 		"PLAYER_ENTERING_WORLD",
 		"PLAYER_LEVEL_UP",
 		"QUEST_LOG_UPDATE",
@@ -81,6 +81,7 @@ function qtBar.RegisterEvents()
 
 	f:SetScript("OnEvent", function(_, event, ...)
 		if event == "PLAYER_REGEN_DISABLED" then
+			qtBar._inCombat = true
 			markThrottled("regen_off", THROTTLE_REGEN_OFF)
 			return
 		end
@@ -92,6 +93,10 @@ function qtBar.RegisterEvents()
 			markNow()
 			return
 		end
+		if event == "BAG_UPDATE_DELAYED" then
+			markThrottled("bag", 0.2)
+			return
+		end
 		if event == "QUEST_LOG_UPDATE" then
 			markThrottled("quest", 0.35)
 			return
@@ -101,6 +106,7 @@ function qtBar.RegisterEvents()
 			return
 		end
 		if event == "PLAYER_REGEN_ENABLED" then
+			qtBar._inCombat = false
 			markNow()
 			return
 		end

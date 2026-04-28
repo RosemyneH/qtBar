@@ -1,11 +1,9 @@
 -- ʕ •ᴥ•ʔ✿ qtBar UI themes (qtRunner-compatible palette) ✿ ʕ •ᴥ•ʔ
-local _G = _G
-
-if not _G.qtBar then
-	_G.qtBar = {}
+if not qtBar then
+	qtBar = {}
 end
 
-local qtBar = _G.qtBar
+local qtBar = qtBar
 
 qtBar.Themes = {
 	dark = {
@@ -177,7 +175,7 @@ qtBar.ThemeLabels = {
 }
 
 function qtBar:GetColors()
-	local themeName = _G.qtBarDB and _G.qtBarDB.theme or "dark"
+	local themeName = qtBarDB and qtBarDB.theme or "dark"
 	return self.Themes[themeName] or self.Themes.dark
 end
 
@@ -196,7 +194,7 @@ local function refreshThemeDropdownText(dd)
 	qtBar.ConfigMerge()
 	local name = qtBar.db and qtBar.db.theme or "dark"
 	local text = qtBar:GetThemeLabel(name)
-	local uid = _G.UIDropDownMenu
+	local uid = UIDropDownMenu
 	if uid and uid.SetText then
 		uid.SetText(dd, text)
 	else

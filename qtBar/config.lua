@@ -1,11 +1,10 @@
 -- ʕ •ᴥ•ʔ✿ saved settings + /qtbar frame ✿ʕ •ᴥ•ʔ
-local _G = _G
-local qtBar = _G.qtBar
+local qtBar = qtBar
 if not qtBar then
 	return
 end
 
-local UIParent = _G.UIParent
+local UIParent = UIParent
 local format = string.format
 local max = math.max
 local ipairs = ipairs
@@ -15,12 +14,19 @@ qtBar.DEFAULTS = {
 	hideWhileLeveling = false,
 	maxLevel = 80,
 	fillColor = { r = 1, g = 0, b = 0, a = 1 },
+	equippedFillColor = { r = 1, g = 0, b = 0, a = 1 },
+	bagFillColor = { r = 0.2, g = 0.75, b = 1, a = 1 },
+	ghostColor = { r = 0.65, g = 0.65, b = 0.65, a = 0.55 },
 	showAttuneSlotCount = true,
 	showLabelOnHover = false,
 	point = "BOTTOM",
 	relativePoint = "BOTTOM",
 	x = 0,
 	y = 64,
+	bagPoint = "BOTTOM",
+	bagRelativePoint = "BOTTOM",
+	bagX = 0,
+	bagY = 46,
 	width = 480,
 	height = 14,
 	sizeMinW = 64,
@@ -29,7 +35,7 @@ qtBar.DEFAULTS = {
 	sizeMaxH = 100,
 	bubbleScale = 1,
 	bubbleStretchX = 1,
-	lerpSpeed = 1.3,
+	lerpSpeed = 3,
 	colorCycleSpeed = 0,
 	theme = "dark"
 }
@@ -47,7 +53,7 @@ function qtBar.ConfigCopyDefaults()
 end
 
 -- ʕ •ᴥ•ʔ✿ BackdropTemplate required on modern clients for SetBackdrop to work ✿ʕ •ᴥ•ʔ
-local CONFIG_FRAME_TEMPLATE = _G.BackdropTemplateMixin and "BackdropTemplate" or nil
+local CONFIG_FRAME_TEMPLATE = BackdropTemplateMixin and "BackdropTemplate" or nil
 
 local VALID_ANCHOR = {
 	CENTER = true,
@@ -62,8 +68,8 @@ local VALID_ANCHOR = {
 }
 
 function qtBar.ConfigMerge()
-	_G.qtBarDB = _G.qtBarDB or {}
-	local db = _G.qtBarDB
+	qtBarDB = qtBarDB or {}
+	local db = qtBarDB
 	local d = qtBar.DEFAULTS
 	for k, v in pairs(d) do
 		if db[k] == nil then
@@ -84,12 +90,46 @@ function qtBar.ConfigMerge()
 		db.fillColor.b = db.fillColor.b or c.b
 		db.fillColor.a = db.fillColor.a or c.a
 	end
+	if type(db.equippedFillColor) ~= "table" then
+		local c = db.fillColor or d.equippedFillColor
+		db.equippedFillColor = { r = c.r, g = c.g, b = c.b, a = c.a }
+	else
+		local c = d.equippedFillColor
+		db.equippedFillColor.r = db.equippedFillColor.r or c.r
+		db.equippedFillColor.g = db.equippedFillColor.g or c.g
+		db.equippedFillColor.b = db.equippedFillColor.b or c.b
+		db.equippedFillColor.a = db.equippedFillColor.a or c.a
+	end
+	if type(db.bagFillColor) ~= "table" then
+		local c = d.bagFillColor
+		db.bagFillColor = { r = c.r, g = c.g, b = c.b, a = c.a }
+	else
+		local c = d.bagFillColor
+		db.bagFillColor.r = db.bagFillColor.r or c.r
+		db.bagFillColor.g = db.bagFillColor.g or c.g
+		db.bagFillColor.b = db.bagFillColor.b or c.b
+		db.bagFillColor.a = db.bagFillColor.a or c.a
+	end
+	if type(db.ghostColor) ~= "table" then
+		local c = d.ghostColor
+		db.ghostColor = { r = c.r, g = c.g, b = c.b, a = c.a }
+	else
+		local c = d.ghostColor
+		db.ghostColor.r = db.ghostColor.r or c.r
+		db.ghostColor.g = db.ghostColor.g or c.g
+		db.ghostColor.b = db.ghostColor.b or c.b
+		db.ghostColor.a = db.ghostColor.a or c.a
+	end
 	db.width = tonumber(db.width) or d.width
 	db.height = tonumber(db.height) or d.height
 	db.x = tonumber(db.x) or d.x
 	db.y = tonumber(db.y) or d.y
 	db.point = db.point or d.point
 	db.relativePoint = db.relativePoint or d.relativePoint
+	db.bagPoint = db.bagPoint or d.bagPoint
+	db.bagRelativePoint = db.bagRelativePoint or d.bagRelativePoint
+	db.bagX = tonumber(db.bagX) or d.bagX
+	db.bagY = tonumber(db.bagY) or d.bagY
 	if db.sizeMinW == nil then
 		db.sizeMinW = d.sizeMinW
 	end
@@ -138,6 +178,12 @@ function qtBar.ConfigMerge()
 	if type(db.relativePoint) ~= "string" or not VALID_ANCHOR[db.relativePoint] then
 		db.relativePoint = d.relativePoint
 	end
+	if type(db.bagPoint) ~= "string" or not VALID_ANCHOR[db.bagPoint] then
+		db.bagPoint = d.bagPoint
+	end
+	if type(db.bagRelativePoint) ~= "string" or not VALID_ANCHOR[db.bagRelativePoint] then
+		db.bagRelativePoint = d.bagRelativePoint
+	end
 	db.sizeMinW = tonumber(db.sizeMinW) or d.sizeMinW
 	db.sizeMaxW = tonumber(db.sizeMaxW) or d.sizeMaxW
 	db.sizeMinH = tonumber(db.sizeMinH) or d.sizeMinH
@@ -156,7 +202,7 @@ function qtBar.ConfigMerge()
 end
 
 local function makeCheck(parent, cfgFrame, name, y, text, get, set)
-	local c = _G.CreateFrame("CheckButton", name, parent, "UICheckButtonTemplate")
+	local c = CreateFrame("CheckButton", name, parent, "UICheckButtonTemplate")
 	c:SetPoint("TOPLEFT", parent, "TOPLEFT", 16, y)
 	local tf = _G[name .. "Text"]
 	tf:SetText(text)
@@ -178,7 +224,7 @@ function qtBar.ConfigCreatePanel()
 	if qtBar.configFrame then
 		return
 	end
-	local f = _G.CreateFrame("Frame", "qtBarConfigFrame", UIParent, CONFIG_FRAME_TEMPLATE)
+	local f = CreateFrame("Frame", "qtBarConfigFrame", UIParent, CONFIG_FRAME_TEMPLATE)
 	f:SetWidth(560)
 	f:SetHeight(720)
 	f:SetPoint("CENTER", 0, 0)
@@ -208,26 +254,26 @@ function qtBar.ConfigCreatePanel()
 	f._themeTexts = {}
 	f._editRefs = {}
 	f:Hide()
-	if _G.UISpecialFrames then
+	if UISpecialFrames then
 		local found = false
-		for _, n in ipairs(_G.UISpecialFrames) do
+		for _, n in ipairs(UISpecialFrames) do
 			if n == "qtBarConfigFrame" then
 				found = true
 				break
 			end
 		end
 		if not found then
-			tinsert(_G.UISpecialFrames, "qtBarConfigFrame")
+			tinsert(UISpecialFrames, "qtBarConfigFrame")
 		end
 	end
 
-	local close = _G.CreateFrame("Button", nil, f, "UIPanelCloseButton")
+	local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
 	close:SetPoint("TOPRIGHT", -6, -6)
 	close:SetScript("OnClick", function()
 		f:Hide()
 	end)
 
-	local dragHandle = _G.CreateFrame("Frame", nil, f)
+	local dragHandle = CreateFrame("Frame", nil, f)
 	dragHandle:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -8)
 	dragHandle:SetPoint("TOPRIGHT", f, "TOPRIGHT", -32, -8)
 	dragHandle:SetHeight(24)
@@ -248,7 +294,7 @@ function qtBar.ConfigCreatePanel()
 	f.themeLabel:SetPoint("TOPLEFT", 22, -42)
 	f.themeLabel:SetText("Theme")
 
-	local themeDrop = _G.CreateFrame("Frame", "qtBarConfigThemeDrop", f, "UIDropDownMenuTemplate")
+	local themeDrop = CreateFrame("Frame", "qtBarConfigThemeDrop", f, "UIDropDownMenuTemplate")
 	themeDrop:SetPoint("TOPLEFT", f, "TOPLEFT", 110, -44)
 	UIDropDownMenu_SetWidth(themeDrop, 200)
 	local function themeDDInit(_self, level)
@@ -273,7 +319,7 @@ function qtBar.ConfigCreatePanel()
 	f.themeDrop = themeDrop
 	qtBar:RegisterThemeDropdown(themeDrop)
 
-	local inset = _G.CreateFrame("Frame", nil, f, CONFIG_FRAME_TEMPLATE)
+	local inset = CreateFrame("Frame", nil, f, CONFIG_FRAME_TEMPLATE)
 	if inset.SetFrameStrata then
 		inset:SetFrameStrata("DIALOG")
 	end
@@ -399,7 +445,7 @@ function qtBar.ConfigCreatePanel()
 		qtBar:ApplyConfigTheme()
 	end)
 	for _, p in ipairs({
-		{ "lerp", "Animation speed (lerp, default 1.3)", "lerpSpeed", "float" },
+		{ "lerp", "Animation speed (lerp, default 3)", "lerpSpeed", "float" },
 		{ "ccycle", "Rainbow cycle speed (0 = off; try 0.2-0.8)", "colorCycleSpeed", "float" }
 	}) do
 		local pkey, lbl, dbk, numKind = p[1], p[2], p[3], p[4]
@@ -410,7 +456,7 @@ function qtBar.ConfigCreatePanel()
 		lab:SetJustifyV("TOP")
 		lab:SetText(lbl)
 		tinsert(f._themeTexts, lab)
-		local edit = _G.CreateFrame("EditBox", "qtBarCfg_" .. pkey, inset, "InputBoxTemplate")
+		local edit = CreateFrame("EditBox", "qtBarCfg_" .. pkey, inset, "InputBoxTemplate")
 		if edit.SetFrameStrata then
 			edit:SetFrameStrata("DIALOG")
 		end
@@ -498,75 +544,86 @@ function qtBar.ConfigCreatePanel()
 		y2 = y2 - max(labH + 18, rowPad + 4)
 	end
 
-	local colorLabel = inset:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-	colorLabel:SetPoint("TOPLEFT", 16, y2)
-	colorLabel:SetWidth(labelW)
-	colorLabel:SetJustifyH("LEFT")
-	colorLabel:SetText("Fill color")
-	tinsert(f._themeTexts, colorLabel)
+	local function createColorPickerRow(rowKey, rowLabel, dbKey, disableCycleOnPick)
+		local colorLabel = inset:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+		colorLabel:SetPoint("TOPLEFT", 16, y2)
+		colorLabel:SetWidth(labelW)
+		colorLabel:SetJustifyH("LEFT")
+		colorLabel:SetText(rowLabel)
+		tinsert(f._themeTexts, colorLabel)
 
-	local colorBtn = _G.CreateFrame("Button", "qtBarCfg_FillColorBtn", inset)
-	if colorBtn.SetFrameStrata then
-		colorBtn:SetFrameStrata("DIALOG")
-	end
-	colorBtn:SetWidth(112)
-	colorBtn:SetHeight(20)
-	colorBtn:SetPoint("TOPLEFT", inset, "TOPLEFT", editX, y2 - 2)
-	colorBtn:SetNormalFontObject("GameFontHighlightSmall")
-	colorBtn:SetText("Pick...")
-	local sw = colorBtn:CreateTexture(nil, "ARTWORK")
-	sw:SetPoint("TOPLEFT", colorBtn, "TOPLEFT", 4, -4)
-	sw:SetPoint("BOTTOMRIGHT", colorBtn, "BOTTOMRIGHT", -4, 4)
-	sw:SetTexture("Interface\\Buttons\\WHITE8X8")
-	colorBtn.swatch = sw
-
-	f.updateColorPreview = function()
-		qtBar.ConfigMerge()
-		local c = qtBar.db.fillColor or qtBar.DEFAULTS.fillColor
-		sw:SetVertexColor(c.r or 1, c.g or 1, c.b or 1, c.a or 1)
-	end
-	f.updateColorPreview()
-
-	local function applyPickedColor(r, g, b, a)
-		qtBar.ConfigMerge()
-		qtBar.db.fillColor = {
-			r = r or 1,
-			g = g or 1,
-			b = b or 1,
-			a = a or 1
-		}
-		qtBar.db.colorCycleSpeed = 0
-		qtBar.Refresh()
-		f.updateColorPreview()
-	end
-
-	colorBtn:SetScript("OnClick", function()
-		qtBar.ConfigMerge()
-		local c = qtBar.db.fillColor or qtBar.DEFAULTS.fillColor
-		if not _G.ColorPickerFrame then
-			return
+		local colorBtn = CreateFrame("Button", "qtBarCfg_" .. rowKey .. "ColorBtn", inset)
+		if colorBtn.SetFrameStrata then
+			colorBtn:SetFrameStrata("DIALOG")
 		end
-		local picker = _G.ColorPickerFrame
-		local r0, g0, b0, a0 = c.r or 1, c.g or 1, c.b or 1, c.a or 1
-		picker.hasOpacity = true
-		picker.opacity = 1 - a0
-		picker.previousValues = { r0, g0, b0, a0 }
-		picker.func = function()
-			local r, g, b = picker:GetColorRGB()
-			local a = 1 - (_G.OpacitySliderFrame and _G.OpacitySliderFrame:GetValue() or picker.opacity or 0)
-			applyPickedColor(r, g, b, a)
+		colorBtn:SetWidth(112)
+		colorBtn:SetHeight(20)
+		colorBtn:SetPoint("TOPLEFT", inset, "TOPLEFT", editX, y2 - 2)
+		colorBtn:SetNormalFontObject("GameFontHighlightSmall")
+		colorBtn:SetText("Pick...")
+		local sw = colorBtn:CreateTexture(nil, "ARTWORK")
+		sw:SetPoint("TOPLEFT", colorBtn, "TOPLEFT", 4, -4)
+		sw:SetPoint("BOTTOMRIGHT", colorBtn, "BOTTOMRIGHT", -4, 4)
+		sw:SetTexture("Interface\\Buttons\\WHITE8X8")
+		colorBtn.swatch = sw
+
+		f.updateColorPreview = f.updateColorPreview or function() end
+		local prevUpdate = f.updateColorPreview
+		f.updateColorPreview = function()
+			prevUpdate()
+			qtBar.ConfigMerge()
+			local c = qtBar.db[dbKey] or qtBar.DEFAULTS[dbKey]
+			sw:SetVertexColor(c.r or 1, c.g or 1, c.b or 1, c.a or 1)
 		end
-		picker.opacityFunc = picker.func
-		picker.cancelFunc = function(prev)
-			if type(prev) == "table" then
-				applyPickedColor(prev[1], prev[2], prev[3], prev[4] or 1)
+
+		local function applyPickedColor(r, g, b, a)
+			qtBar.ConfigMerge()
+			qtBar.db[dbKey] = {
+				r = r or 1,
+				g = g or 1,
+				b = b or 1,
+				a = a or 1
+			}
+			if disableCycleOnPick then
+				qtBar.db.colorCycleSpeed = 0
 			end
+			qtBar.Refresh()
+			f.updateColorPreview()
 		end
-		picker:SetColorRGB(r0, g0, b0)
-		picker:Hide()
-		picker:Show()
-	end)
-	y2 = y2 - rowPad
+
+		colorBtn:SetScript("OnClick", function()
+			qtBar.ConfigMerge()
+			local c = qtBar.db[dbKey] or qtBar.DEFAULTS[dbKey]
+			if not ColorPickerFrame then
+				return
+			end
+			local picker = ColorPickerFrame
+			local r0, g0, b0, a0 = c.r or 1, c.g or 1, c.b or 1, c.a or 1
+			picker.hasOpacity = true
+			picker.opacity = 1 - a0
+			picker.previousValues = { r0, g0, b0, a0 }
+			picker.func = function()
+				local r, g, b = picker:GetColorRGB()
+				local a = 1 - (OpacitySliderFrame and OpacitySliderFrame:GetValue() or picker.opacity or 0)
+				applyPickedColor(r, g, b, a)
+			end
+			picker.opacityFunc = picker.func
+			picker.cancelFunc = function(prev)
+				if type(prev) == "table" then
+					applyPickedColor(prev[1], prev[2], prev[3], prev[4] or 1)
+				end
+			end
+			picker:SetColorRGB(r0, g0, b0)
+			picker:Hide()
+			picker:Show()
+		end)
+		y2 = y2 - rowPad
+	end
+
+	createColorPickerRow("EquippedFill", "Equipped fill color", "equippedFillColor", true)
+	createColorPickerRow("BagFill", "Bag fill color", "bagFillColor", true)
+	createColorPickerRow("Ghost", "Ghost bar color", "ghostColor", false)
+	f.updateColorPreview()
 	qtBar.configFrame = f
 	qtBar:ApplyConfigTheme()
 	f:Hide()
@@ -598,6 +655,7 @@ end
 local function applyFillColor(r, g, b, a)
 	qtBar.ConfigMerge()
 	qtBar.db.fillColor = { r = r, g = g, b = b, a = a or 1 }
+	qtBar.db.equippedFillColor = { r = r, g = g, b = b, a = a or 1 }
 	qtBar.db.colorCycleSpeed = 0
 	qtBar.Refresh()
 end
@@ -609,6 +667,10 @@ local function resetPosition()
 	qtBar.db.relativePoint = d.relativePoint
 	qtBar.db.x = d.x
 	qtBar.db.y = d.y
+	qtBar.db.bagPoint = d.bagPoint
+	qtBar.db.bagRelativePoint = d.bagRelativePoint
+	qtBar.db.bagX = d.bagX
+	qtBar.db.bagY = d.bagY
 	qtBar.db.width = d.width
 	qtBar.db.height = d.height
 	if qtBar.ApplyBarLayout then
@@ -618,13 +680,13 @@ local function resetPosition()
 end
 
 local function printUsage()
-	_G.DEFAULT_CHAT_FRAME:AddMessage(
+	DEFAULT_CHAT_FRAME:AddMessage(
 		"|cff99ccffqtBar|r: /qtbar [config] | /qtbar refresh | /qtbar color r g b [a] | /qtbar color reset | /qtbar colorspeed 0-5 | /qtbar resetpos"
 	)
 end
 
-_G.SLASH_QTBAR1 = "/qtbar"
-_G.SlashCmdList["QTBAR"] = function(msg)
+SLASH_QTBAR1 = "/qtbar"
+SlashCmdList["QTBAR"] = function(msg)
 	local m, rest = (msg or ""):match("^%s*(%S*)%s*(.-)%s*$")
 	m = (m or ""):lower()
 	if m == "config" or m == "options" or m == "" then
@@ -633,13 +695,13 @@ _G.SlashCmdList["QTBAR"] = function(msg)
 		if qtBar.Refresh then
 			qtBar.Refresh()
 		end
-		_G.DEFAULT_CHAT_FRAME:AddMessage("|cff99ccffqtBar|r: refreshed attune display.")
+		DEFAULT_CHAT_FRAME:AddMessage("|cff99ccffqtBar|r: refreshed attune display.")
 	elseif m == "color" then
 		local arg = (rest or ""):lower()
 		if arg == "reset" then
 			local c = qtBar.DEFAULTS.fillColor
 			applyFillColor(c.r, c.g, c.b, c.a)
-			_G.DEFAULT_CHAT_FRAME:AddMessage("|cff99ccffqtBar|r: fill color reset.")
+			DEFAULT_CHAT_FRAME:AddMessage("|cff99ccffqtBar|r: fill color reset.")
 			return
 		end
 		local r, g, b, a = rest:match("^%s*(%S+)%s+(%S+)%s+(%S+)%s*(%S*)%s*$")
@@ -649,27 +711,27 @@ _G.SlashCmdList["QTBAR"] = function(msg)
 			return
 		end
 		applyFillColor(r, g, b, a)
-		_G.DEFAULT_CHAT_FRAME:AddMessage(format("|cff99ccffqtBar|r: fill color set to %.2f %.2f %.2f %.2f.", r, g, b, a))
+		DEFAULT_CHAT_FRAME:AddMessage(format("|cff99ccffqtBar|r: fill color set to %.2f %.2f %.2f %.2f.", r, g, b, a))
 	elseif m == "colorspeed" or m == "colorcycle" then
 		qtBar.ConfigMerge()
 		local t = (rest or ""):match("%S+")
 		if not t then
-			_G.DEFAULT_CHAT_FRAME:AddMessage(
+			DEFAULT_CHAT_FRAME:AddMessage(
 				format("|cff99ccffqtBar|r: color cycle speed = %g (0=static, same as options).", tonumber(qtBar.db.colorCycleSpeed) or 0)
 			)
 			return
 		end
 		local s = tonumber(t)
 		if not s or s < 0 or s > 5 then
-			_G.DEFAULT_CHAT_FRAME:AddMessage("|cff99ccffqtBar|r: /qtbar colorspeed <0-5> (config panel has the same).")
+			DEFAULT_CHAT_FRAME:AddMessage("|cff99ccffqtBar|r: /qtbar colorspeed <0-5> (config panel has the same).")
 			return
 		end
 		qtBar.db.colorCycleSpeed = s
 		qtBar.Refresh()
-		_G.DEFAULT_CHAT_FRAME:AddMessage(format("|cff99ccffqtBar|r: color cycle speed = %g.", s))
+		DEFAULT_CHAT_FRAME:AddMessage(format("|cff99ccffqtBar|r: color cycle speed = %g.", s))
 	elseif m == "resetpos" or m == "resetposition" then
 		resetPosition()
-		_G.DEFAULT_CHAT_FRAME:AddMessage("|cff99ccffqtBar|r: bar position reset.")
+		DEFAULT_CHAT_FRAME:AddMessage("|cff99ccffqtBar|r: bar position reset.")
 	else
 		printUsage()
 	end
