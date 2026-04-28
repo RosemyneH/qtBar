@@ -6,12 +6,44 @@ if not qtBar then
 end
 
 local GetTime = _G.GetTime
+local CreateFrame = _G.CreateFrame
 
 local THROTTLE_REGEN_OFF = 0.45
 local lastAt = {}
 
 local function markNow()
 	qtBar.BumpAttuneRefresh()
+end
+
+local PewLayoutDelaySec = 0.25
+
+local function scheduleDelayedLayoutApply()
+	local prev = qtBar._pewLayoutDeferFrame
+	if prev then
+		prev:SetScript("OnUpdate", nil)
+	end
+	local d = CreateFrame("Frame")
+	qtBar._pewLayoutDeferFrame = d
+	local acc = 0
+	d:SetScript("OnUpdate", function(self, el)
+		acc = acc + el
+		if acc < PewLayoutDelaySec then
+			return
+		end
+		self:SetScript("OnUpdate", nil)
+		if qtBar._pewLayoutDeferFrame == self then
+			qtBar._pewLayoutDeferFrame = nil
+		end
+		if qtBar.ConfigMerge then
+			qtBar.ConfigMerge()
+		end
+		if qtBar.ApplyBarLayout then
+			qtBar.ApplyBarLayout()
+		end
+		if qtBar.LayoutBarArt then
+			qtBar.LayoutBarArt()
+		end
+	end)
 end
 
 local function markThrottled(key, interval)
@@ -39,7 +71,8 @@ function qtBar.RegisterEvents()
 		"QUEST_LOG_UPDATE",
 		"LOOT_CLOSED",
 		"PLAYER_REGEN_ENABLED",
-		"PLAYER_REGEN_DISABLED"
+		"PLAYER_REGEN_DISABLED",
+		"PLAYER_LOGOUT"
 	}
 
 	for _, ev in ipairs(eventList) do
@@ -81,6 +114,13 @@ function qtBar.RegisterEvents()
 				qtBar.RefreshAttuneCacheFromWorld()
 			end
 			markNow()
+			scheduleDelayedLayoutApply()
+			return
+		end
+		if event == "PLAYER_LOGOUT" then
+			if qtBar.PersistLayout then
+				qtBar.PersistLayout()
+			end
 			return
 		end
 	end)

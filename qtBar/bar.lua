@@ -15,10 +15,30 @@ local GetCursorPosition = _G.GetCursorPosition
 local IsShiftKeyDown = _G.IsShiftKeyDown
 local UIParent = _G.UIParent
 local UnitLevel = _G.UnitLevel
+local GetTime = _G.GetTime
 local BARS_PATH = "Interface\\TargetingFrame\\UI-StatusBar"
 local XP_ART_PATH = "Interface\\MainMenuBar\\UI-MainMenuBar-Dwarf"
-local MIN_WIDTH, MAX_WIDTH = 256, 2048
-local MIN_HEIGHT, MAX_HEIGHT = 8, 40
+local DEFAULT_MINW, DEFAULT_MAXW = 64, 2560
+local DEFAULT_MINH, DEFAULT_MAXH = 4, 100
+local function getSizeLimits()
+	local db, d = qtBar.db, qtBar.DEFAULTS
+	if not d then
+		return DEFAULT_MINW, DEFAULT_MAXW, DEFAULT_MINH, DEFAULT_MAXH
+	end
+	local w0 = (db and tonumber(db.sizeMinW)) or d.sizeMinW or DEFAULT_MINW
+	local w1 = (db and tonumber(db.sizeMaxW)) or d.sizeMaxW or DEFAULT_MAXW
+	local h0 = (db and tonumber(db.sizeMinH)) or d.sizeMinH or DEFAULT_MINH
+	local h1 = (db and tonumber(db.sizeMaxH)) or d.sizeMaxH or DEFAULT_MAXH
+	w0, w1 = max(32, w0), min(4096, w1)
+	h0, h1 = max(2, h0), min(300, h1)
+	if w0 > w1 then
+		w0, w1 = w1, w0
+	end
+	if h0 > h1 then
+		h0, h1 = h1, h0
+	end
+	return w0, w1, h0, h1
+end
 local ART_COORDS = {
 	{ top = 0.79296875, bottom = 0.83203125 },
 	{ top = 0.54296875, bottom = 0.58203125 },
@@ -45,19 +65,45 @@ local function cursorPos()
 	return x / scale, y / scale
 end
 
+local function numOr(v, d)
+	if type(v) == "number" and v == v then
+		return v
+	end
+	if type(v) == "string" then
+		return tonumber(v)
+	end
+	return d
+end
+
 local function saveLayout()
 	local b = qtBar.bar
 	local db = qtBar.db
-	if not b or not db then
+	if not b or not db or not b.overlay then
 		return
 	end
-	local point, _, relativePoint, x, y = b.overlay:GetPoint(1)
-	db.point = point or "BOTTOM"
-	db.relativePoint = relativePoint or db.point
-	db.x = round(x or 0)
-	db.y = round(y or 53)
-	db.width = round(b.overlay:GetWidth())
-	db.height = round(b.overlay:GetHeight())
+	local ow = b.overlay:GetWidth()
+	local oh = b.overlay:GetHeight()
+	if type(ow) == "number" and type(oh) == "number" and ow > 0 and oh > 0 and ow == ow and oh == oh then
+		db.width = round(ow)
+		db.height = round(oh)
+	end
+	local point, _relativeTo, relativePoint, xOfs, yOfs = b.overlay:GetPoint(1)
+	local x = numOr(xOfs, nil)
+	local y = numOr(yOfs, nil)
+	if type(point) ~= "string" or type(relativePoint) ~= "string" or type(x) ~= "number" or type(y) ~= "number" then
+		return
+	end
+	if math.abs(x) > 20000 or math.abs(y) > 20000 then
+		return
+	end
+	db.point = point
+	db.relativePoint = relativePoint
+	db.x = round(x)
+	db.y = round(y)
+end
+
+function qtBar.PersistLayout()
+	return saveLayout()
 end
 
 local function showTooltip(frame)
@@ -73,15 +119,49 @@ local function showTooltip(frame)
 	GameTooltip:Show()
 end
 
+local function hsvToRgb(h, s, v)
+	h = h % 1
+	if h < 0 then
+		h = h + 1
+	end
+	h = h * 6
+	local i = floor(h)
+	local f = h - i
+	local p, q, t = v * (1 - s), v * (1 - s * f), v * (1 - s * (1 - f))
+	i = i % 6
+	if i == 0 then
+		return v, t, p
+	end
+	if i == 1 then
+		return q, v, p
+	end
+	if i == 2 then
+		return p, v, t
+	end
+	if i == 3 then
+		return p, q, v
+	end
+	if i == 4 then
+		return t, p, v
+	end
+	return v, t, p
+end
+
 function qtBar.ApplyBarLayout()
 	local b = qtBar.bar
 	local db = qtBar.db
-	if not b or not db then
+	if not b or not db or not b.overlay then
 		return
 	end
+	local mw, Mw, mh, Mh = getSizeLimits()
+	local bw = clamp(tonumber(db.width) or 420, mw, Mw)
+	local bh = clamp(tonumber(db.height) or 14, mh, Mh)
+	-- ʕ •ᴥ•ʔ ApplyBarLayout reads db only; never writes SavedVariables here. ✿ʕ •ᴥ•ʔ
+	local x = round(tonumber(db.x) or 0)
+	local y = round(tonumber(db.y) or 64)
 	b.overlay:ClearAllPoints()
-	b.overlay:SetSize(clamp(db.width or 1024, MIN_WIDTH, MAX_WIDTH), clamp(db.height or 13, MIN_HEIGHT, MAX_HEIGHT))
-	b.overlay:SetPoint(db.point or "BOTTOM", UIParent, db.relativePoint or "BOTTOM", db.x or 0, db.y or 53)
+	b.overlay:SetSize(bw, bh)
+	b.overlay:SetPoint(db.point or "BOTTOM", UIParent, db.relativePoint or "BOTTOM", x, y)
 end
 
 function qtBar.LayoutBarArt()
@@ -89,10 +169,18 @@ function qtBar.LayoutBarArt()
 	if not b or not b.art then
 		return
 	end
+	local db = qtBar.db
+	local scale = (db and tonumber(db.bubbleScale)) or 1
+	if scale < 0.1 then
+		scale = 0.1
+	end
+	if scale > 3 then
+		scale = 3
+	end
 	local w = b.overlay:GetWidth()
 	local h = b.overlay:GetHeight()
 	local pieceW = w * 0.25
-	local artH = min(10, h)
+	local artH = min(10 * scale, h * 0.9)
 	local y = max(0, h - artH)
 	for i = 1, 4 do
 		local t = b.art[i]
@@ -169,7 +257,11 @@ function qtBar.BarCreate()
 			b.resizing = true
 			self:SetScript("OnUpdate", function()
 				local cx, cy = cursorPos()
-				self:SetSize(clamp(b.resizeW + cx - b.resizeX, MIN_WIDTH, MAX_WIDTH), clamp(b.resizeH + cy - b.resizeY, MIN_HEIGHT, MAX_HEIGHT))
+				local mw, Mw, mh, Mh = getSizeLimits()
+				self:SetSize(
+					clamp(b.resizeW + cx - b.resizeX, mw, Mw),
+					clamp(b.resizeH + cy - b.resizeY, mh, Mh)
+				)
 			end)
 		end
 	end)
@@ -228,15 +320,17 @@ function qtBar.BarSyncFromData()
 		return
 	end
 
-	local c = db.fillColor
 	b.overlay:Show()
 	b.fill:SetValue(snap.average or 0)
-	b.fill:SetStatusBarColor(c.r, c.g, c.b, c.a or 1)
+	if not (tonumber(db.colorCycleSpeed) and tonumber(db.colorCycleSpeed) > 0) then
+		local c = db.fillColor
+		b.fill:SetStatusBarColor(c.r, c.g, c.b, c.a or 1)
+	end
 	b.label:SetText(qtBar.FormatAttuneLabel and qtBar.FormatAttuneLabel(snap) or format("Attune: %d%%", floor((snap.average or 0) + 0.5)))
 	b._lastAverage = snap.average
 end
 
-local POLL_ATTUNE_SEC = 5
+local POLL_ATTUNE_SEC = 1
 
 function qtBar.BarOnUpdate(_, elapsed)
 	local b = qtBar.bar
@@ -261,5 +355,18 @@ function qtBar.BarOnUpdate(_, elapsed)
 	if qtBar._dirty then
 		qtBar._dirty = false
 		qtBar.BarSyncFromData()
+	end
+	if b.fill and b.overlay:IsShown() then
+		local db = qtBar.db
+		local sp = (db and tonumber(db.colorCycleSpeed)) or 0
+		if sp > 0 then
+			local t = (GetTime() * sp) % 1
+			local cr, cg, cb = hsvToRgb(t, 0.7, 0.95)
+			local a = 1
+			if db and db.fillColor and type(db.fillColor) == "table" then
+				a = db.fillColor.a or 1
+			end
+			b.fill:SetStatusBarColor(cr, cg, cb, a)
+		end
 	end
 end

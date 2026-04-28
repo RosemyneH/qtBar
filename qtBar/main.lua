@@ -89,6 +89,12 @@ function qtBar.Refresh()
 	if not qtBar.bar or not qtBar.bar.overlay then
 		qtBar.BarCreate()
 	end
+	if qtBar.ApplyBarLayout then
+		qtBar.ApplyBarLayout()
+	end
+	if qtBar.LayoutBarArt then
+		qtBar.LayoutBarArt()
+	end
 	qtBar.BarSyncFromData()
 	qtBar._dirty = false
 	qtBar.queuedUpdate = false
@@ -107,7 +113,33 @@ end
 
 -- ʕ •ᴥ•ʔ global: Synastria runs this after custom APIs are ready (server) ✿ʕ •ᴥ•ʔ
 function qtBarInit()
+	if qtBar._evFrame then
+		return
+	end
 	qtBar.InitCore()
 end
-SynastriaSafeInvoke(qtBarInit)
+
+if type(_G.SynastriaSafeInvoke) == "function" then
+	_G.SynastriaSafeInvoke(qtBarInit)
+else
+	qtBarInit()
+end
+
+local qtBarBoot = CreateFrame("Frame")
+qtBarBoot:RegisterEvent("PLAYER_ENTERING_WORLD")
+qtBarBoot:SetScript("OnEvent", function(self)
+	self:UnregisterEvent("PLAYER_ENTERING_WORLD")
+	if not qtBar._evFrame then
+		qtBarInit()
+	end
+	if qtBar.ConfigMerge then
+		qtBar.ConfigMerge()
+	end
+	if qtBar.ApplyBarLayout then
+		qtBar.ApplyBarLayout()
+	end
+	if qtBar.Refresh then
+		qtBar.Refresh()
+	end
+end)
 
