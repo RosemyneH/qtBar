@@ -46,8 +46,6 @@ local ART_COORDS = {
 	{ top = 0.04296875, bottom = 0.08203125 }
 }
 
-qtBar._dirty = true
-
 local function clamp(v, low, high)
 	return max(low, min(high, v))
 end
@@ -403,10 +401,8 @@ function qtBar.BarCreate()
 
 	bars.equipped = createVisualBar("qtBarStandalone", "qtBarFill", "qtBarFillGhost", "qtBarTicker", "equipped", true)
 	bars.bag = createVisualBar("qtBarStandaloneBag", "qtBarFillBag", "qtBarFillGhostBag", "qtBarTickerBag", "bag", true)
-	qtBar.StartAttunePoller()
 
 	bars.equipped.ticker._qtRunning = false
-	qtBar.SetTickerActive(true)
 	bars.bag.ticker:Hide()
 
 	qtBar.ApplyBarLayout()
@@ -414,7 +410,7 @@ function qtBar.BarCreate()
 	qtBar.bar = bars.equipped
 end
 
-function qtBar.BarSyncFromData()
+function qtBar.BarSyncFromData(which)
 	local bars = qtBar.bars
 	if not bars or not bars.equipped or not bars.bag then
 		return
@@ -424,16 +420,6 @@ function qtBar.BarSyncFromData()
 	if not db then
 		return
 	end
-
-	local equippedSnap = qtBar.GetEquippedAttunementSnapshot and qtBar.GetEquippedAttunementSnapshot() or nil
-	local bagSnap = qtBar.GetBagAttunementSnapshot and qtBar.GetBagAttunementSnapshot() or nil
-	if not equippedSnap or not bagSnap then
-		return
-	end
-	qtBar._lastEquippedSnap = equippedSnap
-	qtBar._lastBagSnap = bagSnap
-	qtBar._lastEquippedFp = qtBar.AttuneFingerprintHash(equippedSnap)
-	qtBar._lastBagFp = qtBar.AttuneFingerprintHash(bagSnap)
 
 	if db.hideWhileLeveling and UnitLevel("player") < (db.maxLevel or 80) then
 		bars.equipped.overlay:Hide()
@@ -472,42 +458,24 @@ function qtBar.BarSyncFromData()
 		b._lastAverage = snap.average
 	end
 
-	syncBarVisual(bars.equipped, equippedSnap, "Equipped Attune")
-	syncBarVisual(bars.bag, bagSnap, "Bag Attune")
-	qtBar.UpdateLabelVisibility(false)
-end
-
-local POLL_ATTUNE_SEC = 1
-
-local function pollAttuneChanged()
-	local equippedSnap = qtBar.GetEquippedAttunementSnapshot and qtBar.GetEquippedAttunementSnapshot() or nil
-	local bagSnap = qtBar.GetBagAttunementSnapshot and qtBar.GetBagAttunementSnapshot() or nil
-	local eqFp = equippedSnap and qtBar.AttuneFingerprintHash(equippedSnap) or nil
-	local bagFp = bagSnap and qtBar.AttuneFingerprintHash(bagSnap) or nil
-	if eqFp ~= qtBar._lastEquippedFp or bagFp ~= qtBar._lastBagFp then
-		qtBar.BumpAttuneRefresh()
-	end
-end
-
-function qtBar.StartAttunePoller()
-	if qtBar._attunePollTicker then
-		return
-	end
-	if C_Timer and C_Timer.NewTicker then
-		qtBar._attunePollTicker = C_Timer.NewTicker(POLL_ATTUNE_SEC, pollAttuneChanged)
-		return
-	end
-	local f = CreateFrame("Frame")
-	local acc = 0
-	f:SetScript("OnUpdate", function(_, el)
-		acc = acc + (el or 0)
-		if acc < POLL_ATTUNE_SEC then
-			return
+	if which ~= "bag" then
+		local equippedSnap = qtBar.GetEquippedAttunementSnapshot and qtBar.GetEquippedAttunementSnapshot() or nil
+		if equippedSnap then
+			qtBar._lastEquippedSnap = equippedSnap
+			qtBar._lastEquippedFp = qtBar.AttuneFingerprintHash(equippedSnap)
+			syncBarVisual(bars.equipped, equippedSnap, "Equipped Attune")
 		end
-		acc = 0
-		pollAttuneChanged()
-	end)
-	qtBar._attunePollTicker = f
+	end
+	if which ~= "equipped" then
+		local bagSnap = qtBar.GetBagAttunementSnapshot and qtBar.GetBagAttunementSnapshot() or nil
+		if bagSnap then
+			qtBar._lastBagSnap = bagSnap
+			qtBar._lastBagFp = qtBar.AttuneFingerprintHash(bagSnap)
+			syncBarVisual(bars.bag, bagSnap, "Bag Attune")
+		end
+	end
+	qtBar.UpdateLabelVisibility(false)
+	qtBar.SetTickerActive(true)
 end
 
 function qtBar.SetTickerActive(active)
@@ -540,17 +508,10 @@ function qtBar.BarOnUpdate(_, elapsed)
 	if not mainBar or not mainBar.ticker then
 		return
 	end
-	if qtBar.queuedUpdate then
-		qtBar.queuedUpdate = false
-		qtBar._dirty = true
-	end
 	local el = elapsed or 0
 	local db = qtBar.db
 	local colorSpeed = (db and tonumber(db.colorCycleSpeed)) or 0
-	if qtBar._dirty then
-		qtBar._dirty = false
-		qtBar.BarSyncFromData()
-	end
+	local animating = false
 	for _, b in pairs(bars) do
 		if b.fill and b.overlay:IsShown() then
 			local target = b._targetAverage
@@ -567,6 +528,9 @@ function qtBar.BarOnUpdate(_, elapsed)
 				end
 				b._displayAverage = nextV
 				b.fill:SetValue(nextV)
+				if nextV ~= target then
+					animating = true
+				end
 			end
 			if colorSpeed > 0 then
 				local rt = (GetTime() * colorSpeed) % 1
@@ -579,5 +543,8 @@ function qtBar.BarOnUpdate(_, elapsed)
 				b.fill:SetStatusBarColor(cr, cg, cb, a)
 			end
 		end
+	end
+	if not animating and colorSpeed <= 0 then
+		qtBar.SetTickerActive(false)
 	end
 end

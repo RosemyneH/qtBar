@@ -350,7 +350,6 @@ function qtBar.ConfigCreatePanel()
 		return qtBar.db.showAttuneSlotCount
 	end, function(v)
 		qtBar.db.showAttuneSlotCount = v
-		qtBar._dirty = true
 	end)
 	y = y - rowPad
 	f.checkLabelHover = makeCheck(inset, f, "qtBarCfg_LabelHover", y, "Show label only on hover", function()

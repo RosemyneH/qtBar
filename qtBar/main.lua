@@ -4,87 +4,70 @@ if not qtBar then
 end
 
 local qtBar = qtBar
-local unpack = unpack or table.unpack
-
-qtBar.queuedUpdate = false
-qtBar.old_cu_uib = nil
-qtBar.pendingCustomUIBRefresh = false
 
 local CreateFrame = CreateFrame
 
-local function _delayRun(seconds, fn)
-	if type(Wait) == "function" then
-		Wait(seconds, fn)
-		return
+-- ʕ •ᴥ•ʔ one delayed attune pass after first paint (enough for APIs to be ready) ✿ʕ •ᴥ•ʔ
+local function scheduleDelayedAttuneDisplay(seconds)
+	local f = qtBar._qtBarAttuneDelayFrame
+	if f then
+		f:SetScript("OnUpdate", nil)
 	end
+	f = CreateFrame("Frame")
+	qtBar._qtBarAttuneDelayFrame = f
+	f:Hide()
 	local acc = 0
-	local f = CreateFrame("Frame")
 	f:SetScript("OnUpdate", function(self, el)
-		acc = acc + el
-		if acc >= seconds then
-			self:SetScript("OnUpdate", nil)
-			fn()
+		acc = acc + (el or 0)
+		if acc < seconds then
+			return
+		end
+		self:SetScript("OnUpdate", nil)
+		if qtBar.RefreshAttuneDisplay then
+			qtBar.RefreshAttuneDisplay()
 		end
 	end)
+	f:Show()
 end
 
-function qtBar.BumpAttuneRefresh()
-	qtBar._dirty = true
-	qtBar.queuedUpdate = true
-	if qtBar.SetTickerActive then
-		qtBar.SetTickerActive(true)
+function qtBar.RefreshAttuneDisplay(which, bagID)
+	local scope = which or "all"
+	if scope == "bag" then
+		if qtBar.RefreshBagAttunementSnapshot then
+			qtBar.RefreshBagAttunementSnapshot(bagID)
+		end
+		if qtBar.BarSyncFromData then
+			qtBar.BarSyncFromData("bag")
+		end
+		return
 	end
+	if scope == "equipped" then
+		if qtBar.RefreshEquippedAttunementSnapshot then
+			qtBar.RefreshEquippedAttunementSnapshot()
+		end
+		if qtBar.BarSyncFromData then
+			qtBar.BarSyncFromData("equipped")
+		end
+		return
+	end
+	if qtBar.RefreshEquippedAttunementSnapshot then
+		qtBar.RefreshEquippedAttunementSnapshot()
+	end
+	if qtBar.RefreshBagAttunementSnapshot then
+		qtBar.RefreshBagAttunementSnapshot()
+	end
+	if qtBar.BarSyncFromData then
+		qtBar.BarSyncFromData()
+	end
+end
+
+function qtBar.BumpAttuneRefresh(which, bagID)
+	qtBar.RefreshAttuneDisplay(which, bagID)
 end
 
 qtBar.RequestAttuneRefresh = qtBar.BumpAttuneRefresh
 
-function qtBar.ScheduleCustomUIBRefresh()
-	if qtBar.pendingCustomUIBRefresh then
-		return
-	end
-	qtBar.pendingCustomUIBRefresh = true
-	_delayRun(0.1, function()
-		qtBar.pendingCustomUIBRefresh = false
-		if RequestUpdateList then
-			local updateMask = UPDATE_MASK or {
-				FULL_LIST = 1,
-				OBTAINED = 2,
-				ATTUNED_PERCENT = 4
-			}
-			local o, a = updateMask.OBTAINED, updateMask.ATTUNED_PERCENT
-			local bitlib = bit
-			if bitlib and bitlib.bor then
-				RequestUpdateList(bitlib.bor(o, a))
-			else
-				RequestUpdateList(o + a)
-			end
-		end
-		qtBar.BumpAttuneRefresh()
-	end)
-end
-
-function qtBar.HookCustomItemUpdateButton()
-	if qtBar.hookedCustomItemUpdateButton then
-		return
-	end
-	if type(_cu_uib) ~= "function" then
-		return
-	end
-	qtBar.hookedCustomItemUpdateButton = true
-	qtBar._uibHooked = true
-	qtBar.old_cu_uib = _cu_uib
-	_cu_uib = function(...)
-		qtBar.ScheduleCustomUIBRefresh()
-		return qtBar.old_cu_uib(...)
-	end
-end
-
-function qtBar._tryHookUib()
-	qtBar.HookCustomItemUpdateButton()
-end
-
 function qtBar.Refresh()
-	qtBar.BumpAttuneRefresh()
 	qtBar.ConfigMerge()
 	if not qtBar.bar or not qtBar.bar.overlay then
 		qtBar.BarCreate()
@@ -95,20 +78,15 @@ function qtBar.Refresh()
 	if qtBar.LayoutBarArt then
 		qtBar.LayoutBarArt()
 	end
-	qtBar.BarSyncFromData()
-	qtBar._dirty = false
-	qtBar.queuedUpdate = false
+	qtBar.RefreshAttuneDisplay()
 end
 
 function qtBar.InitCore()
 	qtBar.ConfigMerge()
 	qtBar.BarCreate()
 	qtBar.RegisterEvents()
-	qtBar._tryHookUib()
-	qtBar.BumpAttuneRefresh()
 	qtBar.Refresh()
-	qtBar._dirty = true
-	qtBar.queuedUpdate = true
+	scheduleDelayedAttuneDisplay(0.5)
 end
 
 -- ʕ •ᴥ•ʔ global: Synastria runs this after custom APIs are ready (server) ✿ʕ •ᴥ•ʔ
@@ -118,7 +96,6 @@ function qtBarInit()
 	end
 	qtBar.InitCore()
 end
-
 if type(SynastriaSafeInvoke) == "function" then
 	SynastriaSafeInvoke(qtBarInit)
 else
