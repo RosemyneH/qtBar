@@ -1,4 +1,4 @@
-## Interface: 33300
+## Interface: 30300
 ## Title: |cff99ccffqt|r|cffff9933AttuneBar|r
 ## Notes: Tracks equipped attuned gear with a standalone lightweight bar
 ## Version: v1
