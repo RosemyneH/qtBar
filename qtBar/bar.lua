@@ -16,8 +16,34 @@ local UIParent = UIParent
 local UnitLevel = UnitLevel
 local GetTime = GetTime
 local BARS_PATH = "Interface\\TargetingFrame\\UI-StatusBar"
+local SOLID_BAR_TEX = "Interface\\Buttons\\WHITE8X8"
+-- ʕ •ᴥ•ʔ cDF chrome: uiexperiencebar.blp only (ui-hud-experiencebar-round); bundled under qtBar/textures ✿ʕ •ᴥ•ʔ
+local CDF_ASSETS = "Interface\\AddOns\\qtBar\\textures\\"
+local CDF_TEX_UIEXP = CDF_ASSETS .. "uiexperiencebar"
+-- ui-hud-experiencebar-round — same as cDF new XP (mainbars.lua); no second mainmenubar layer ✿ʕ •ᴥ•ʔ
+local CDF_COORD_ROUND_U1, CDF_COORD_ROUND_U2 = 1 / 2048, 572 / 2048
+local CDF_COORD_ROUND_V1, CDF_COORD_ROUND_V2 = 1 / 64, 18 / 64
 local XP_ART_PATH = "Interface\\MainMenuBar\\UI-MainMenuBar-Dwarf"
+-- ʕ •ᴥ•ʔ Match LayoutBarArt cdfRound CENTER dx (-3); vertical uses insetY only (center dy is not symmetric margin) ✿ʕ •ᴥ•ʔ
+local CDF_FILL_ROUNDFRAME_X = -3
+local CDF_FILL_INSET_X = 3
+local CDF_FILL_INSET_Y = 3
+local CDF_MIN_INNER_W = 16
+local CDF_MIN_INNER_H = 4
 local BAG_BAR_GAP = 4
+
+local function cdfComputeInsets(W, H)
+	if type(W) ~= "number" or type(H) ~= "number" or W ~= W or H ~= H then
+		return 0, 0, 0
+	end
+	local ix = min(CDF_FILL_INSET_X, max(0, (W - CDF_MIN_INNER_W) / 2))
+	local iy = min(CDF_FILL_INSET_Y, max(0, (H - CDF_MIN_INNER_H) / 2))
+	local ox = CDF_FILL_ROUNDFRAME_X
+	if ix + ox < 0 then
+		ox = -ix
+	end
+	return ix, iy, ox
+end
 local DEFAULT_MINW, DEFAULT_MAXW = 64, 2560
 local DEFAULT_MINH, DEFAULT_MAXH = 4, 100
 local function getSizeLimits()
@@ -123,7 +149,7 @@ local function showTooltip(frame)
 	local snap = (key == "bag") and qtBar._lastBagSnap or qtBar._lastEquippedSnap
 	local prefix = (key == "bag") and "Bag Attune" or "Equipped Attune"
 	GameTooltip:SetOwner(frame, "ANCHOR_CURSOR")
-	GameTooltip:SetText("qtBar", 0.6, 0.8, 1)
+	GameTooltip:SetText(qtBar.ADDON_TITLE or "qtAttuneBar")
 	GameTooltip:AddLine(qtBar.FormatAttuneLabel(snap, prefix), 1, 1, 1)
 	if snap and snap.count then
 		GameTooltip:AddLine(format("Average %.1f%% across %d slots", snap.average or 0, snap.count), 0.85, 0.85, 0.85)
@@ -143,11 +169,134 @@ local function rainbowRgb(t)
 	return r, g, b
 end
 
+function qtBar.ApplyBarInsetFills()
+	local bars = qtBar.bars
+	local db = qtBar.db
+	if not bars or not db or not bars.equipped or not bars.equipped.overlay then
+		return
+	end
+	local cdf = db.useCDFBarTextures
+	local function insetFull(fill, ghost, overlay)
+		if not fill or not ghost or not overlay then
+			return
+		end
+		local ix, iy, ox = 0, 0, 0
+		if cdf then
+			local W, H = overlay:GetWidth(), overlay:GetHeight()
+			ix, iy, ox = cdfComputeInsets(W, H)
+		end
+		fill:ClearAllPoints()
+		ghost:ClearAllPoints()
+		fill:SetPoint("TOPLEFT", overlay, "TOPLEFT", ix + ox, -iy)
+		fill:SetPoint("BOTTOMRIGHT", overlay, "BOTTOMRIGHT", -ix + ox, iy)
+		ghost:SetPoint("TOPLEFT", overlay, "TOPLEFT", ix + ox, -iy)
+		ghost:SetPoint("BOTTOMRIGHT", overlay, "BOTTOMRIGHT", -ix + ox, iy)
+	end
+	insetFull(bars.equipped.fill, bars.equipped.fillGhost, bars.equipped.overlay)
+	insetFull(bars.bag.fill, bars.bag.fillGhost, bars.bag.overlay)
+	if bars.equipped.label then
+		bars.equipped.label:ClearAllPoints()
+		bars.equipped.label:SetPoint("CENTER", bars.equipped.overlay, "CENTER", 0, 1)
+	end
+	if bars.bag.label then
+		bars.bag.label:ClearAllPoints()
+		bars.bag.label:SetPoint("CENTER", bars.bag.overlay, "CENTER", 0, 1)
+	end
+end
+
 local function getFillColorForBar(db, key)
 	if key == "bag" then
 		return (db and db.bagFillColor) or (qtBar.DEFAULTS and qtBar.DEFAULTS.bagFillColor) or (db and db.fillColor)
 	end
 	return (db and db.equippedFillColor) or (qtBar.DEFAULTS and qtBar.DEFAULTS.equippedFillColor) or (db and db.fillColor)
+end
+
+function qtBar.ApplyBarTextureStyle()
+	local bars = qtBar.bars
+	local db = qtBar.db
+	if not bars or not db then
+		return
+	end
+	local cdf = db.useCDFBarTextures
+	for _, b in pairs(bars) do
+		if b and b.fill and b.fillGhost then
+			if cdf then
+				-- ʕ •ᴥ•ʔ Solid tint — UI-StatusBar has vertical grain under strong vertex color ✿ʕ •ᴥ•ʔ
+				b.fill:SetStatusBarTexture(SOLID_BAR_TEX)
+				local tx = b.fill:GetStatusBarTexture()
+				if tx then
+					tx:SetTexCoord(0, 1, 0, 1)
+					tx:SetDrawLayer("BORDER", 0)
+				end
+				b.fillGhost:SetStatusBarTexture(SOLID_BAR_TEX)
+				local gtx = b.fillGhost:GetStatusBarTexture()
+				if gtx then
+					gtx:SetTexCoord(0, 1, 0, 1)
+					gtx:SetDrawLayer("ARTWORK", 0)
+				end
+			else
+				b.fill:SetStatusBarTexture(BARS_PATH)
+				local tx = b.fill:GetStatusBarTexture()
+				if tx then
+					tx:SetTexCoord(0, 1, 0, 1)
+					tx:SetDrawLayer("BORDER", 0)
+				end
+				b.fillGhost:SetStatusBarTexture(BARS_PATH)
+				local gtx = b.fillGhost:GetStatusBarTexture()
+				if gtx then
+					gtx:SetTexCoord(0, 1, 0, 1)
+					gtx:SetDrawLayer("ARTWORK", 0)
+				end
+			end
+		end
+		if b and b.art then
+			for i = 1, 4 do
+				local t = b.art[i]
+				if t then
+					if cdf then
+						t:Hide()
+					else
+						t:SetTexture(XP_ART_PATH)
+						t:Show()
+					end
+				end
+			end
+		end
+		if b and b.cdfRound then
+			if cdf then
+				b.cdfRound:SetTexture(CDF_TEX_UIEXP)
+				b.cdfRound:SetTexCoord(CDF_COORD_ROUND_U1, CDF_COORD_ROUND_U2, CDF_COORD_ROUND_V1, CDF_COORD_ROUND_V2)
+				b.cdfRound:SetVertexColor(1, 1, 1)
+				b.cdfRound:Show()
+			else
+				b.cdfRound:Hide()
+			end
+		end
+		-- ʕ •ᴥ•ʔ Rect bg fills overlay corners past pointed/chrome atlas ✿ʕ •ᴥ•ʔ
+		if b and b.bg then
+			if cdf then
+				b.bg:Hide()
+			else
+				b.bg:Show()
+			end
+		end
+	end
+end
+
+local function normalizeBagBarParents(bars)
+	local bg = bars and bars.bag
+	if not bg or not bg.overlay then
+		return
+	end
+	if bg.fill and bg.fill:GetParent() ~= bg.overlay then
+		bg.fill:SetParent(bg.overlay)
+	end
+	if bg.fillGhost and bg.fillGhost:GetParent() ~= bg.overlay then
+		bg.fillGhost:SetParent(bg.overlay)
+	end
+	if bg.label and bg.label:GetParent() ~= bg.overlay then
+		bg.label:SetParent(bg.overlay)
+	end
 end
 
 function qtBar.ApplyBarLayout()
@@ -156,6 +305,7 @@ function qtBar.ApplyBarLayout()
 	if not bars or not db or not bars.equipped or not bars.equipped.overlay then
 		return
 	end
+	normalizeBagBarParents(bars)
 	local mw, Mw, mh, Mh = getSizeLimits()
 	local bw = clamp(tonumber(db.width) or 420, mw, Mw)
 	local bh = clamp(tonumber(db.height) or 14, mh, Mh)
@@ -168,6 +318,7 @@ function qtBar.ApplyBarLayout()
 	equipped.overlay:SetPoint(db.point or "BOTTOM", UIParent, db.relativePoint or "BOTTOM", x, y)
 	local bag = bars.bag
 	if bag and bag.overlay then
+		bag.overlay:Show()
 		local bx = round(tonumber(db.bagX) or x)
 		local by = round(tonumber(db.bagY) or (y - bh - BAG_BAR_GAP))
 		bag.overlay:ClearAllPoints()
@@ -182,6 +333,18 @@ function qtBar.LayoutBarArt()
 		return
 	end
 	local db = qtBar.db
+	if db and db.useCDFBarTextures then
+		for _, b in pairs(bars) do
+			if b and b.overlay and b.cdfRound then
+				local w = max(1, b.overlay:GetWidth())
+				local h = max(1, b.overlay:GetHeight())
+				b.cdfRound:ClearAllPoints()
+				b.cdfRound:SetSize(w, max(h + 4, 18))
+				b.cdfRound:SetPoint("CENTER", b.overlay, "CENTER", -3, -2)
+			end
+		end
+		return
+	end
 	local scale = (db and tonumber(db.bubbleScale)) or 1
 	local stretchX = (db and tonumber(db.bubbleStretchX)) or 1
 	if scale < 0.1 then
@@ -323,6 +486,10 @@ function qtBar.BarCreate()
 			b.art[i] = t
 		end
 
+		b.cdfRound = b.overlay:CreateTexture(nil, "OVERLAY")
+		b.cdfRound:SetDrawLayer("OVERLAY", -6)
+		b.cdfRound:Hide()
+
 		b.label = b.overlay:CreateFontString(nil, "OVERLAY", "TextStatusBarText")
 		b.label:SetPoint("CENTER", b.overlay, "CENTER", 0, 1)
 		b.label:SetText("")
@@ -375,7 +542,12 @@ function qtBar.BarCreate()
 								bars.bag.overlay:SetSize(nw, nh)
 							end
 						end
-						qtBar.LayoutBarArt()
+						if qtBar.LayoutBarArt then
+							qtBar.LayoutBarArt()
+						end
+						if qtBar.ApplyBarInsetFills then
+							qtBar.ApplyBarInsetFills()
+						end
 					end)
 				end
 			end)
@@ -405,8 +577,15 @@ function qtBar.BarCreate()
 	bars.equipped.ticker._qtRunning = false
 	bars.bag.ticker:Hide()
 
+	if qtBar.ConfigMerge then
+		qtBar.ConfigMerge()
+	end
 	qtBar.ApplyBarLayout()
+	qtBar.ApplyBarTextureStyle()
 	qtBar.LayoutBarArt()
+	if qtBar.ApplyBarInsetFills then
+		qtBar.ApplyBarInsetFills()
+	end
 	qtBar.bar = bars.equipped
 end
 
@@ -425,6 +604,10 @@ function qtBar.BarSyncFromData(which)
 		bars.equipped.overlay:Hide()
 		bars.bag.overlay:Hide()
 		return
+	end
+
+	if db.hideBagAttuneBar and bars.bag and bars.bag.overlay then
+		bars.bag.overlay:Hide()
 	end
 
 	local function syncBarVisual(b, snap, prefix)
@@ -466,7 +649,7 @@ function qtBar.BarSyncFromData(which)
 			syncBarVisual(bars.equipped, equippedSnap, "Equipped Attune")
 		end
 	end
-	if which ~= "equipped" then
+	if which ~= "equipped" and not db.hideBagAttuneBar then
 		local bagSnap = qtBar.GetBagAttunementSnapshot and qtBar.GetBagAttunementSnapshot() or nil
 		if bagSnap then
 			qtBar._lastBagSnap = bagSnap
@@ -513,7 +696,8 @@ function qtBar.BarOnUpdate(_, elapsed)
 	local colorSpeed = (db and tonumber(db.colorCycleSpeed)) or 0
 	local animating = false
 	for _, b in pairs(bars) do
-		if b.fill and b.overlay:IsShown() then
+		local run = b.overlay:IsShown()
+		if b.fill and run then
 			local target = b._targetAverage
 			local display = b._displayAverage
 			if type(target) == "number" and type(display) == "number" then

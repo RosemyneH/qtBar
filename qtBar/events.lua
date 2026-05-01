@@ -5,13 +5,8 @@ if not qtBar then
 end
 
 local CreateFrame = CreateFrame
-local GetTime = GetTime
-local UnitGUID = UnitGUID
 
 local PewLayoutDelaySec = 0.25
-local CLEU_THROTTLE_SEC = 0.2
-local lastCLEUAttune = 0
-local playerGUID
 
 local function scheduleDelayedLayoutApply()
 	local prev = qtBar._pewLayoutDeferFrame
@@ -47,26 +42,6 @@ local function refreshEquipped()
 	qtBar.BumpAttuneRefresh("equipped")
 end
 
--- PARTY_KILL as a top-level event is not reliable; CLEU carries PARTY_KILL and UNIT_DIED
-local function maybeRefreshFromCombatLog()
-	local t = (type(GetTime) == "function" and GetTime()) or 0
-	if t - lastCLEUAttune < CLEU_THROTTLE_SEC then
-		return
-	end
-	lastCLEUAttune = t
-	if qtBar.RefreshEquippedAttunementSnapshot then
-		local snap = qtBar.RefreshEquippedAttunementSnapshot()
-		local n = snap and tonumber(snap.count) or 0
-		if n > 0 then
-			if qtBar.BarSyncFromData then
-				qtBar.BarSyncFromData("equipped")
-			end
-			return
-		end
-	end
-	qtBar.BumpAttuneRefresh()
-end
-
 local function refreshAll()
 	qtBar.BumpAttuneRefresh()
 end
@@ -79,7 +54,6 @@ function qtBar.RegisterEvents()
 	qtBar._evFrame = f
 
 	local eventList = {
-		"COMBAT_LOG_EVENT_UNFILTERED",
 		"QUEST_TURNED_IN",
 		"PLAYER_EQUIPMENT_CHANGED",
 		"UNIT_INVENTORY_CHANGED",
@@ -101,29 +75,14 @@ function qtBar.RegisterEvents()
 			refreshEquipped()
 			return
 		end
-		if event == "COMBAT_LOG_EVENT_UNFILTERED" then
-			if not playerGUID and type(UnitGUID) == "function" then
-				playerGUID = UnitGUID("player")
-			end
-			-- ʕ •ᴥ•ʔ WotLK CLEU: see API_COMBAT_LOG_EVENT (subEvent + base params include hideCaster) ✿ʕ •ᴥ•ʔ
-			local subEvent = select(2, ...)
-			local sourceGUID = select(4, ...)
-			local petGUID = type(UnitGUID) == "function" and UnitGUID("pet") or nil
-			local isKillCredit = (subEvent == "PARTY_KILL" or subEvent == "UNIT_DIED")
-			local isOurSource = sourceGUID
-				and playerGUID
-				and (sourceGUID == playerGUID or (petGUID and sourceGUID == petGUID))
-			if isKillCredit and isOurSource then
-				maybeRefreshFromCombatLog()
-			end
-			return
-		end
 		if event == "QUEST_TURNED_IN" or event == "PLAYER_EQUIPMENT_CHANGED" or event == "CHAT_MSG_SYSTEM" then
 			refreshEquipped()
 			return
 		end
 		if event == "PLAYER_ENTERING_WORLD" then
-			playerGUID = UnitGUID("player")
+			if qtBar._tryHookUib then
+				qtBar._tryHookUib()
+			end
 			refreshAll()
 			scheduleDelayedLayoutApply()
 			return

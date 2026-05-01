@@ -10,6 +10,8 @@ local max = math.max
 local ipairs = ipairs
 local tinsert = table.insert
 
+qtBar.ADDON_TITLE = "|cff99ccffqt|r|cffff9933AttuneBar|r"
+
 qtBar.DEFAULTS = {
 	hideWhileLeveling = false,
 	maxLevel = 80,
@@ -19,6 +21,8 @@ qtBar.DEFAULTS = {
 	ghostColor = { r = 0.65, g = 0.65, b = 0.65, a = 0.55 },
 	showAttuneSlotCount = true,
 	showLabelOnHover = false,
+	hideBagAttuneBar = false,
+	useCDFBarTextures = false,
 	point = "BOTTOM",
 	relativePoint = "BOTTOM",
 	x = 0,
@@ -198,6 +202,7 @@ function qtBar.ConfigMerge()
 		db.lerpSpeed = 20
 	end
 	db.colorCycleSpeed = tonumber(db.colorCycleSpeed) or 0
+
 	qtBar.db = db
 end
 
@@ -288,7 +293,7 @@ function qtBar.ConfigCreatePanel()
 
 	f.title = f:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
 	f.title:SetPoint("TOP", 0, -14)
-	f.title:SetText("qtBar")
+	f.title:SetText(qtBar.ADDON_TITLE)
 
 	f.themeLabel = f:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
 	f.themeLabel:SetPoint("TOPLEFT", 22, -42)
@@ -359,6 +364,18 @@ function qtBar.ConfigCreatePanel()
 		if qtBar.UpdateLabelVisibility then
 			qtBar.UpdateLabelVisibility(false)
 		end
+	end)
+	y = y - rowPad
+	f.checkHideBag = makeCheck(inset, f, "qtBarCfg_HideBag", y, "Hide bag attune bar (second bar)", function()
+		return qtBar.db.hideBagAttuneBar
+	end, function(v)
+		qtBar.db.hideBagAttuneBar = v
+	end)
+	y = y - rowPad
+	f.checkCDFTex = makeCheck(inset, f, "qtBarCfg_CDFTex", y, "Use cDF-style bubble chrome (bundled under qtBar/textures; cDF addon not required)", function()
+		return qtBar.db.useCDFBarTextures
+	end, function(v)
+		qtBar.db.useCDFBarTextures = v
 	end)
 	y = y - rowPad
 	local labelW = 340
@@ -680,7 +697,7 @@ end
 
 local function printUsage()
 	DEFAULT_CHAT_FRAME:AddMessage(
-		"|cff99ccffqtBar|r: /qtbar [config] | /qtbar refresh | /qtbar color r g b [a] | /qtbar color reset | /qtbar colorspeed 0-5 | /qtbar resetpos"
+		qtBar.ADDON_TITLE .. ": /qtbar [config] | /qtbar refresh | /qtbar color r g b [a] | /qtbar color reset | /qtbar colorspeed 0-5 | /qtbar resetpos"
 	)
 end
 
@@ -694,13 +711,13 @@ SlashCmdList["QTBAR"] = function(msg)
 		if qtBar.Refresh then
 			qtBar.Refresh()
 		end
-		DEFAULT_CHAT_FRAME:AddMessage("|cff99ccffqtBar|r: refreshed attune display.")
+		DEFAULT_CHAT_FRAME:AddMessage(qtBar.ADDON_TITLE .. ": refreshed attune display.")
 	elseif m == "color" then
 		local arg = (rest or ""):lower()
 		if arg == "reset" then
 			local c = qtBar.DEFAULTS.fillColor
 			applyFillColor(c.r, c.g, c.b, c.a)
-			DEFAULT_CHAT_FRAME:AddMessage("|cff99ccffqtBar|r: fill color reset.")
+			DEFAULT_CHAT_FRAME:AddMessage(qtBar.ADDON_TITLE .. ": fill color reset.")
 			return
 		end
 		local r, g, b, a = rest:match("^%s*(%S+)%s+(%S+)%s+(%S+)%s*(%S*)%s*$")
@@ -710,27 +727,27 @@ SlashCmdList["QTBAR"] = function(msg)
 			return
 		end
 		applyFillColor(r, g, b, a)
-		DEFAULT_CHAT_FRAME:AddMessage(format("|cff99ccffqtBar|r: fill color set to %.2f %.2f %.2f %.2f.", r, g, b, a))
+		DEFAULT_CHAT_FRAME:AddMessage(format("%s: fill color set to %.2f %.2f %.2f %.2f.", qtBar.ADDON_TITLE, r, g, b, a))
 	elseif m == "colorspeed" or m == "colorcycle" then
 		qtBar.ConfigMerge()
 		local t = (rest or ""):match("%S+")
 		if not t then
 			DEFAULT_CHAT_FRAME:AddMessage(
-				format("|cff99ccffqtBar|r: color cycle speed = %g (0=static, same as options).", tonumber(qtBar.db.colorCycleSpeed) or 0)
+				format("%s: color cycle speed = %g (0=static, same as options).", qtBar.ADDON_TITLE, tonumber(qtBar.db.colorCycleSpeed) or 0)
 			)
 			return
 		end
 		local s = tonumber(t)
 		if not s or s < 0 or s > 5 then
-			DEFAULT_CHAT_FRAME:AddMessage("|cff99ccffqtBar|r: /qtbar colorspeed <0-5> (config panel has the same).")
+			DEFAULT_CHAT_FRAME:AddMessage(qtBar.ADDON_TITLE .. ": /qtbar colorspeed <0-5> (config panel has the same).")
 			return
 		end
 		qtBar.db.colorCycleSpeed = s
 		qtBar.Refresh()
-		DEFAULT_CHAT_FRAME:AddMessage(format("|cff99ccffqtBar|r: color cycle speed = %g.", s))
+		DEFAULT_CHAT_FRAME:AddMessage(format("%s: color cycle speed = %g.", qtBar.ADDON_TITLE, s))
 	elseif m == "resetpos" or m == "resetposition" then
 		resetPosition()
-		DEFAULT_CHAT_FRAME:AddMessage("|cff99ccffqtBar|r: bar position reset.")
+		DEFAULT_CHAT_FRAME:AddMessage(qtBar.ADDON_TITLE .. ": bar position reset.")
 	else
 		printUsage()
 	end

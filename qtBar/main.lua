@@ -26,6 +26,9 @@ local function scheduleDelayedAttuneDisplay(seconds)
 		if qtBar.RefreshAttuneDisplay then
 			qtBar.RefreshAttuneDisplay()
 		end
+		if qtBar._tryHookUib then
+			qtBar._tryHookUib()
+		end
 	end)
 	f:Show()
 end
@@ -67,6 +70,41 @@ end
 
 qtBar.RequestAttuneRefresh = qtBar.BumpAttuneRefresh
 
+-- ʕ •ᴥ•ʔ✿ Synastria _cu_uib: attune / custom item UI updates ✿ʕ •ᴥ•ʔ
+function qtBar.ScheduleCustomUIBRefresh()
+	local f = qtBar._qtBarCustomUIBDefer
+	if f then
+		return
+	end
+	f = CreateFrame("Frame")
+	qtBar._qtBarCustomUIBDefer = f
+	f:SetScript("OnUpdate", function(self)
+		self:SetScript("OnUpdate", nil)
+		qtBar._qtBarCustomUIBDefer = nil
+		qtBar.BumpAttuneRefresh()
+	end)
+end
+
+function qtBar.HookCustomItemUpdateButton()
+	if qtBar.hookedCustomItemUpdateButton then
+		return
+	end
+	if type(_cu_uib) ~= "function" then
+		return
+	end
+	qtBar.hookedCustomItemUpdateButton = true
+	qtBar._uibHooked = true
+	qtBar.old_cu_uib = _cu_uib
+	_cu_uib = function(...)
+		qtBar.ScheduleCustomUIBRefresh()
+		return qtBar.old_cu_uib(...)
+	end
+end
+
+function qtBar._tryHookUib()
+	qtBar.HookCustomItemUpdateButton()
+end
+
 function qtBar.Refresh()
 	qtBar.ConfigMerge()
 	if not qtBar.bar or not qtBar.bar.overlay then
@@ -75,8 +113,14 @@ function qtBar.Refresh()
 	if qtBar.ApplyBarLayout then
 		qtBar.ApplyBarLayout()
 	end
+	if qtBar.ApplyBarTextureStyle then
+		qtBar.ApplyBarTextureStyle()
+	end
 	if qtBar.LayoutBarArt then
 		qtBar.LayoutBarArt()
+	end
+	if qtBar.ApplyBarInsetFills then
+		qtBar.ApplyBarInsetFills()
 	end
 	qtBar.RefreshAttuneDisplay()
 end
@@ -85,6 +129,9 @@ function qtBar.InitCore()
 	qtBar.ConfigMerge()
 	qtBar.BarCreate()
 	qtBar.RegisterEvents()
+	if qtBar._tryHookUib then
+		qtBar._tryHookUib()
+	end
 	qtBar.Refresh()
 	scheduleDelayedAttuneDisplay(0.5)
 end
