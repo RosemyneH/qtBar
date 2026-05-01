@@ -1,5 +1,5 @@
 ## Interface: 30300
-## Title: |cff99ccffqt|r|cffff9933AttuneBar|r
+## Title: |cff00bfffqt|r|cffff7d0aAttuneBar|r
 ## Notes: Tracks equipped attuned gear with a standalone lightweight bar
 ## Version: v1
 ## SavedVariables: qtBarDB

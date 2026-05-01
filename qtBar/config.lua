@@ -10,7 +10,7 @@ local max = math.max
 local ipairs = ipairs
 local tinsert = table.insert
 
-qtBar.ADDON_TITLE = "|cff99ccffqt|r|cffff9933AttuneBar|r"
+qtBar.ADDON_TITLE = "|cff00bfffqt|r|cffff7d0aAttuneBar|r"
 
 qtBar.DEFAULTS = {
 	hideWhileLeveling = false,
